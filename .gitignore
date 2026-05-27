@@ -1,0 +1,44 @@
+# ─── Node ─────────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Environment ──────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+backend/.env
+frontend/.env
+
+# ─── Build outputs ────────────────────────────────────────────────────────────
+dist/
+build/
+backend/dist/
+
+# ─── TypeScript ───────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ─── Prisma ───────────────────────────────────────────────────────────────────
+backend/prisma/migrations/dev.db
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Push helper (contains credentials)
+push-to-github.ps1
+push-to-github.sh

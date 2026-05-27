@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  name           String
+  role           Role      @default(USER)
+  trackingLimit  Int       @default(1)
+  emailAlerts    Boolean   @default(true)
+  pushAlerts     Boolean   @default(true)
+  browserAlerts  Boolean   @default(true)
+  avatar         String?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  trackings     Tracking[]
+  alerts        Alert[]
+  pushTokens    PushToken[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  imageUrl    String?
+  category    String?
+  description String?
+  tags        String[]
+  isActive    Boolean  @default(true)
+  isNew       Boolean  @default(false)
+  isFeatured  Boolean  @default(false)
+  viewCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  storeListings StoreProduct[]
+  trackings     Tracking[]
+
+  @@map("products")
+}
+
+model Store {
+  id       String  @id @default(cuid())
+  name     String
+  slug     String  @unique
+  logoUrl  String?
+  domain   String?
+  country  String  @default("us")
+  isActive Boolean @default(true)
+  sortOrder Int    @default(0)
+
+  products StoreProduct[]
+
+  @@map("stores")
+}
+
+model StoreProduct {
+  id          String    @id @default(cuid())
+  productId   String
+  storeId     String
+  url         String
+  price       Float?
+  currency    String    @default("USD")
+  inStock     Boolean   @default(false)
+  stockLevel  Int?
+  lastChecked DateTime?
+  checkCount  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id])
+  alerts  Alert[]
+
+  @@unique([productId, storeId])
+  @@map("store_products")
+}
+
+model Tracking {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  isActive  Boolean  @default(true)
+  notifyEmail Boolean @default(true)
+  notifyPush  Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("trackings")
+}
+
+model Alert {
+  id             String    @id @default(cuid())
+  userId         String
+  storeProductId String
+  type           AlertType @default(IN_STOCK)
+  price          Float?
+  sentAt         DateTime  @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeProduct StoreProduct @relation(fields: [storeProductId], references: [id], onDelete: Cascade)
+
+  @@map("alerts")
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  platform  String   @default("web")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_tokens")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  url       String?
+  imageUrl  String?
+  isRead    Boolean  @default(false)
+  type      String   @default("stock_alert")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AlertType {
+  IN_STOCK
+  PRICE_DROP
+  BACK_IN_STOCK
+  OUT_OF_STOCK
+}
