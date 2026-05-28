@@ -44,11 +44,15 @@ export type StockStatus = 'IN_STOCK' | 'OUT_OF_STOCK' | 'LIMITED' | 'PREORDER' |
 export interface StockStatusEntry {
   storeSlug: string;
   storeName: string;
+  storeId?: string;
+  storeLogo?: string;
   status: StockStatus;
   price?: number | null;
   currency?: string;
   url?: string;
+  productUrl?: string;
   lastChecked?: string;
+  lastCheckedAt?: string;
 }
 
 // ─── StoreProduct ──────────────────────────────────────────────────────────
@@ -87,6 +91,7 @@ export interface Product {
   bestStatus?: StockStatus;
   lowestPrice?: number | null;
   isTracking?: boolean;
+  trackingCount?: number;
   _count?: { trackings: number };
 }
 
@@ -103,6 +108,7 @@ export interface Tracking {
   autoBuyEnabled?: boolean;
   autoBuyMaxPrice?: number | null;
   createdAt: string;
+  stockStatuses?: StockStatusEntry[];
   product: Product & {
     stockStatuses?: StockStatusEntry[];
     bestStatus?: StockStatus;
