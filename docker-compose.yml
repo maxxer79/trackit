@@ -93,7 +93,7 @@ services:
     container_name: trackit_frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "2000:80"
     depends_on:
       backend:
         condition: service_healthy
