@@ -187,6 +187,13 @@ export interface AdminStats {
   scraperErrors: number;
   recentUsers: AdminUser[];
   topProducts: { id: string; name: string; slug: string; _count: { trackings: number } }[];
+  recentAlerts?: Array<{
+    id: string;
+    productName: string;
+    storeName: string;
+    userEmail: string;
+    createdAt: string;
+  }>;
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
