@@ -27,59 +27,43 @@ stockCheckerQueue.process(
 
     const product = await prisma.product.findUnique({
       where: { id: productId, isActive: true },
-      include: { storeLinks: { where: { isActive: true } } },
+      include: {
+        storeListings: {
+          where: { isActive: true },
+          include: { store: true },
+        },
+      },
     });
 
     if (!product) return;
 
     const results = await Promise.allSettled(
-      product.storeLinks.map(async (link) => {
-        const scraper = getScraperForStore(link.storeSlug);
+      product.storeListings.map(async (listing) => {
+        const storeSlug = listing.store.slug;
+        const scraper = getScraperForStore(storeSlug);
         const startTime = Date.now();
         let logStatus = 'success';
         let logMessage: string | undefined;
 
         try {
-          const result = await scraper.checkStock(link.productUrl, link.storeProductId || undefined);
-          const duration = Date.now() - startTime;
+          const result = await scraper.checkStock(listing.url, listing.id);
 
-          // Get the store
-          const store = await prisma.store.findUnique({ where: { slug: link.storeSlug } });
-          if (!store) return;
-
-          // Get previous status
-          const prevStatus = await prisma.stockStatus.findUnique({
-            where: { productId_storeId: { productId: product.id, storeId: store.id } },
-          });
-
-          // Update stock status
-          const stockStatus = await prisma.stockStatus.upsert({
-            where: { productId_storeId: { productId: product.id, storeId: store.id } },
-            update: {
-              status: result.status,
-              price: result.price,
-              productUrl: result.productUrl,
-              lastCheckedAt: new Date(),
-              checkCount: { increment: 1 },
-              inStockAt: result.status === 'IN_STOCK' ? new Date() : undefined,
-              outOfStockAt: result.status === 'OUT_OF_STOCK' ? new Date() : undefined,
-            },
-            create: {
-              productId: product.id,
-              storeId: store.id,
-              status: result.status,
-              price: result.price,
-              productUrl: result.productUrl,
-              inStockAt: result.status === 'IN_STOCK' ? new Date() : undefined,
-              outOfStockAt: result.status === 'OUT_OF_STOCK' ? new Date() : undefined,
-            },
-          });
-
-          // Check if status changed to IN_STOCK
-          const wasOutOfStock = !prevStatus || prevStatus.status !== 'IN_STOCK';
+          const wasInStock = listing.inStock;
           const isNowInStock = result.status === 'IN_STOCK' || result.status === 'LIMITED';
 
-          if (wasOutOfStock && isNowInStock) {
+          // Update store listing with latest stock info
+          await prisma.storeProduct.update({
+            where: { id: listing.id },
+            data: {
+              inStock: isNowInStock,
+              price: result.price ?? listing.price,
+              lastChecked: new Date(),
+              checkCount: { increment: 1 },
+            },
+          });
+
+          // If just came into stock, notify trackers
+          if (!wasInStock && isNowInStock) {
             // Emit real-time update
             const { getIO } = await import('../socket/index');
             const io = getIO();
@@ -87,21 +71,21 @@ stockCheckerQueue.process(
               productId: product.id,
               productSlug: product.slug,
               productName: product.name,
-              storeSlug: link.storeSlug,
-              storeName: store.name,
+              storeSlug,
+              storeName: listing.store.name,
               status: result.status,
               price: result.price,
-              productUrl: result.productUrl,
+              productUrl: listing.url,
             });
 
             // Find all users tracking this product
-            const trackers = await prisma.trackingItem.findMany({
+            const trackers = await prisma.tracking.findMany({
               where: {
                 productId: product.id,
                 isActive: true,
                 OR: [
-                  { watchStores: { isEmpty: true } }, // watching all stores
-                  { watchStores: { has: link.storeSlug } }, // watching this store
+                  { watchStores: { isEmpty: true } },
+                  { watchStores: { has: storeSlug } },
                 ],
               },
               include: {
@@ -110,14 +94,13 @@ stockCheckerQueue.process(
                     id: true,
                     email: true,
                     name: true,
-                    notifyEmail: true,
+                    emailAlerts: true,
                     notifySms: true,
-                    notifyPush: true,
+                    pushAlerts: true,
                     notifyDiscord: true,
                     phoneNumber: true,
                     discordWebhook: true,
                     autoBuyEnabled: true,
-                    pushSubscriptions: true,
                   },
                 },
               },
@@ -126,11 +109,16 @@ stockCheckerQueue.process(
             // Send notifications to each tracker
             for (const tracker of trackers) {
               await sendNotifications({
-                user: tracker.user,
+                user: {
+                  ...tracker.user,
+                  notifyEmail: tracker.user.emailAlerts,
+                  notifyPush: tracker.user.pushAlerts,
+                  autoBuyEnabled: tracker.user.autoBuyEnabled,
+                },
                 product,
-                storeSlug: link.storeSlug,
-                storeName: store.name,
-                productUrl: result.productUrl,
+                storeSlug,
+                storeName: listing.store.name,
+                productUrl: result.productUrl ?? listing.url,
                 price: result.price,
                 status: result.status,
                 autoBuyEnabled: tracker.autoBuyEnabled,
@@ -141,21 +129,21 @@ stockCheckerQueue.process(
 
           await prisma.scraperLog.create({
             data: {
-              storeSlug: link.storeSlug,
+              storeSlug,
               productSlug: product.slug,
               status: logStatus,
               duration: Date.now() - startTime,
             },
           });
 
-          return stockStatus;
+          return { listingId: listing.id, inStock: isNowInStock };
         } catch (error: any) {
           logStatus = error.response?.status === 429 ? 'blocked' : 'error';
           logMessage = error.message;
 
           await prisma.scraperLog.create({
             data: {
-              storeSlug: link.storeSlug,
+              storeSlug,
               productSlug: product.slug,
               status: logStatus,
               message: logMessage,
@@ -180,17 +168,16 @@ export async function scheduleAllProducts() {
   const intervalMinutes = parseInt(process.env.SCRAPER_INTERVAL_MINUTES || '5');
 
   for (let i = 0; i < products.length; i++) {
-    // Stagger jobs to avoid hammering all at once
     await stockCheckerQueue.add(
       { productId: products[i].id },
       {
-        delay: i * 1000, // 1 second between each product start
+        delay: i * 1000,
         repeat: { every: intervalMinutes * 60 * 1000 },
       }
     );
   }
 
-  console.log(`✅ Scheduled ${products.length} products for stock checking every ${intervalMinutes} minutes`);
+  console.log(`Scheduled ${products.length} products for stock checking every ${intervalMinutes} minutes`);
 }
 
 export default stockCheckerQueue;

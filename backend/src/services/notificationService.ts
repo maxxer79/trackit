@@ -68,8 +68,9 @@ export const sendNotificationToUser = async (payload: NotifyPayload): Promise<vo
 
     // Emit real-time socket notification (imported lazily to avoid circular deps)
     try {
-      const { io } = await import('../server');
-      io.to(`user:${payload.userId}`).emit('notification', {
+      const { getIO } = await import('../socket/index');
+      const io = getIO();
+      io?.to(`user:${payload.userId}`).emit('notification', {
         title: payload.title,
         body: payload.body,
         url: payload.url,

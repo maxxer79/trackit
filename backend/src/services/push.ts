@@ -28,7 +28,7 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
     return;
   }
 
-  const subscriptions = await prisma.pushSubscription.findMany({
+  const subscriptions = await prisma.pushToken.findMany({
     where: { userId },
   });
 
@@ -66,7 +66,7 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
     } catch (error: any) {
       // 410 Gone or 404 Not Found = subscription expired, clean it up
       if (error.statusCode === 410 || error.statusCode === 404) {
-        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+        await prisma.pushToken.delete({ where: { id: sub.id } }).catch(() => {});
       } else {
         console.error(`Push notification failed for subscription ${sub.id}:`, error.message);
       }

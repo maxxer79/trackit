@@ -19,8 +19,8 @@ router.get('/:slug', async (req, res: Response) => {
   const store = await prisma.store.findUnique({
     where: { slug: req.params.slug },
     include: {
-      stockStatuses: {
-        where: { status: 'IN_STOCK' },
+      products: {
+        where: { isActive: true, inStock: true },
         include: { product: true },
         take: 20,
         orderBy: { updatedAt: 'desc' },

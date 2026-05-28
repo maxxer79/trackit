@@ -13,10 +13,16 @@ model User {
   password       String
   name           String
   role           Role      @default(USER)
-  trackingLimit  Int       @default(1)
+  trackingLimit  Int       @default(10)
+  // Notification preferences
   emailAlerts    Boolean   @default(true)
   pushAlerts     Boolean   @default(true)
   browserAlerts  Boolean   @default(true)
+  notifySms      Boolean   @default(false)
+  notifyDiscord  Boolean   @default(false)
+  phoneNumber    String?
+  discordWebhook String?
+  autoBuyEnabled Boolean   @default(false)
   avatar         String?
   isActive       Boolean   @default(true)
   lastLoginAt    DateTime?
@@ -53,14 +59,14 @@ model Product {
 }
 
 model Store {
-  id       String  @id @default(cuid())
-  name     String
-  slug     String  @unique
-  logoUrl  String?
-  domain   String?
-  country  String  @default("us")
-  isActive Boolean @default(true)
-  sortOrder Int    @default(0)
+  id        String  @id @default(cuid())
+  name      String
+  slug      String  @unique
+  logoUrl   String?
+  domain    String?
+  country   String  @default("us")
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
 
   products StoreProduct[]
 
@@ -76,6 +82,7 @@ model StoreProduct {
   currency    String    @default("USD")
   inStock     Boolean   @default(false)
   stockLevel  Int?
+  isActive    Boolean   @default(true)
   lastChecked DateTime?
   checkCount  Int       @default(0)
   createdAt   DateTime  @default(now())
@@ -90,14 +97,17 @@ model StoreProduct {
 }
 
 model Tracking {
-  id        String   @id @default(cuid())
-  userId    String
-  productId String
-  isActive  Boolean  @default(true)
-  notifyEmail Boolean @default(true)
-  notifyPush  Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  productId       String
+  isActive        Boolean  @default(true)
+  notifyEmail     Boolean  @default(true)
+  notifyPush      Boolean  @default(true)
+  watchStores     String[]
+  autoBuyEnabled  Boolean  @default(false)
+  autoBuyMaxPrice Decimal?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -109,13 +119,22 @@ model Tracking {
 model Alert {
   id             String    @id @default(cuid())
   userId         String
-  storeProductId String
+  storeProductId String?
+  productId      String?
+  storeSlug      String?
+  storeName      String?
   type           AlertType @default(IN_STOCK)
+  status         String?
   price          Float?
+  productUrl     String?
+  emailSent      Boolean   @default(false)
+  smsSent        Boolean   @default(false)
+  pushSent       Boolean   @default(false)
+  discordSent    Boolean   @default(false)
   sentAt         DateTime  @default(now())
 
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  storeProduct StoreProduct @relation(fields: [storeProductId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeProduct StoreProduct? @relation(fields: [storeProductId], references: [id], onDelete: SetNull)
 
   @@map("alerts")
 }
@@ -148,6 +167,18 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model ScraperLog {
+  id          String   @id @default(cuid())
+  storeSlug   String
+  productSlug String
+  status      String
+  message     String?
+  duration    Int?
+  createdAt   DateTime @default(now())
+
+  @@map("scraper_logs")
 }
 
 enum Role {
