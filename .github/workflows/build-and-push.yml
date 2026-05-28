@@ -36,7 +36,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          dockerfile: ./backend/Dockerfile
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:latest
@@ -49,7 +48,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          dockerfile: ./frontend/Dockerfile
           push: true
           tags: |
             ${{ env.FRONTEND_IMAGE }}:latest

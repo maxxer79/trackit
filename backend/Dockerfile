@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy source
 COPY tsconfig.json ./
@@ -25,7 +25,7 @@ WORKDIR /app
 
 # Install only production deps
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy compiled output and Prisma client
 COPY --from=builder /app/dist ./dist
