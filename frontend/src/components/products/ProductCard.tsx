@@ -137,9 +137,9 @@ export default function ProductCard({ product, index = 0 }: Props) {
               )}
             </div>
 
-            {product.trackingCount > 0 && (
+            {(product.trackingCount ?? 0) > 0 && (
               <p className="text-caption2 text-dark-label3 mt-2">
-                {product.trackingCount.toLocaleString()} tracking
+                {(product.trackingCount ?? 0).toLocaleString()} tracking
               </p>
             )}
           </div>

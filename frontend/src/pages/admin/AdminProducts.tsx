@@ -92,7 +92,7 @@ export default function AdminProducts() {
       name: p.name,
       slug: p.slug,
       description: p.description ?? '',
-      category: p.category,
+      category: p.category ?? '',
       imageUrl: p.imageUrl ?? '',
       isActive: (p as any).isActive ?? true,
     });
@@ -191,7 +191,7 @@ export default function AdminProducts() {
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-caption2 text-dark-label3 capitalize">{p.category}</span>
                     <StatusBadge status={bestStatus} size="sm" />
-                    {p.trackingCount > 0 && (
+                    {(p.trackingCount ?? 0) > 0 && (
                       <span className="text-caption2 text-dark-label3">{p.trackingCount} tracking</span>
                     )}
                   </div>

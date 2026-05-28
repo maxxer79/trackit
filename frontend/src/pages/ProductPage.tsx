@@ -130,9 +130,9 @@ export default function ProductPage() {
             ) : (
               <StatusBadge status="OUT_OF_STOCK" />
             )}
-            {product.trackingCount > 0 && (
+            {(product.trackingCount ?? 0) > 0 && (
               <span className="badge-unknown">
-                {product.trackingCount.toLocaleString()} tracking
+                {(product.trackingCount ?? 0).toLocaleString()} tracking
               </span>
             )}
           </div>
@@ -225,7 +225,7 @@ export default function ProductPage() {
                     )}
                   </div>
                   <p className="text-caption2 text-dark-label3 mt-1">
-                    Updated {formatDistanceToNow(new Date(s.lastCheckedAt), { addSuffix: true })}
+                    Updated {formatDistanceToNow(new Date(s.lastCheckedAt ?? s.lastChecked ?? Date.now()), { addSuffix: true })}
                   </p>
                 </div>
                 <svg className="w-4 h-4 text-dark-label3 group-hover:text-white transition-colors shrink-0"
@@ -241,7 +241,3 @@ export default function ProductPage() {
   );
 }
 
-// Re-export Skeleton for this file's usage
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`skeleton ${className}`} />;
-}

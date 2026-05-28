@@ -91,6 +91,7 @@ export interface Product {
   bestStatus?: StockStatus;
   lowestPrice?: number | null;
   isTracking?: boolean;
+  isNewlyAdded?: boolean;
   trackingCount?: number;
   _count?: { trackings: number };
 }
@@ -199,4 +200,11 @@ export interface DashboardStats {
   };
   recentUsers: User[];
   topTracked: Product[];
+  recentAlerts?: Array<{
+    id: string;
+    productName: string;
+    storeName: string;
+    userEmail: string;
+    createdAt: string;
+  }>;
 }
