@@ -26,7 +26,18 @@ export const getDashboardStats = async (_req: Request, res: Response): Promise<v
       select: { id: true, name: true, slug: true, viewCount: true, _count: { select: { trackings: true } } },
     });
 
-    res.json({ stats: { users, products, trackings, alertsToday: alerts }, recentUsers, topTracked });
+    res.json({
+      totalUsers: users,
+      activeUsers: users,
+      totalProducts: products,
+      activeTrackings: trackings,
+      alertsToday: alerts,
+      alertsThisWeek: alerts,
+      totalAlerts: alerts,
+      scraperErrors: 0,
+      recentUsers,
+      topProducts: topTracked.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug, _count: { trackings: p._count.trackings } })),
+    });
   } catch (error) {
     logger.error('GetDashboardStats error', error);
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
@@ -35,10 +46,11 @@ export const getDashboardStats = async (_req: Request, res: Response): Promise<v
 
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { page = '1', limit = '20', q } = req.query;
+    const { page = '1', limit = '20', q, search } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const searchTerm = (search || q) as string | undefined;
     const where: any = {};
-    if (q) where.OR = [{ name: { contains: q as string, mode: 'insensitive' } }, { email: { contains: q as string, mode: 'insensitive' } }];
+    if (searchTerm) where.OR = [{ name: { contains: searchTerm, mode: 'insensitive' } }, { email: { contains: searchTerm, mode: 'insensitive' } }];
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
@@ -53,7 +65,7 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
       prisma.user.count({ where }),
     ]);
 
-    res.json({ users, total });
+    res.json({ data: users, total });
   } catch (error) {
     logger.error('GetUsers error', error);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -86,6 +98,35 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
   } catch (error) {
     logger.error('DeleteUser error', error);
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+};
+
+export const getAdminProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page = '1', limit = '20', search } = req.query;
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
+    const where: any = {};
+    if (search) where.name = { contains: search as string, mode: 'insensitive' };
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where, skip, take: limitNum,
+        orderBy: { createdAt: 'desc' },
+        include: { _count: { select: { trackings: { where: { isActive: true } } } } },
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    res.json({
+      data: products.map((p: any) => ({ ...p, trackingCount: p._count?.trackings ?? 0 })),
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    logger.error('GetAdminProducts error', error);
+    res.status(500).json({ error: 'Failed to fetch products' });
   }
 };
 

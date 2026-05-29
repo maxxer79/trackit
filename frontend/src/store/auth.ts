@@ -87,7 +87,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'trackit-auth',
-      partialize: (state) => ({ accessToken: state.accessToken }),
+      partialize: (state) => ({ accessToken: state.accessToken, user: state.user }),
     }
   )
 );
