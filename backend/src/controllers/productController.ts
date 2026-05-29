@@ -75,7 +75,7 @@ export const getCategories = async (_req: Request, res: Response): Promise<void>
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
     });
-    res.json(categories.map(c => ({ name: c.category, count: c._count.id })));
+    res.json(categories.map(c => c.category).filter(Boolean));
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch categories' });
   }
