@@ -1,15 +1,67 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useProduct, useAddTracking, useRemoveTracking } from '../hooks/useProducts';
 import { useAuthStore } from '../store/auth';
 import { Skeleton } from '../components/ui/Skeleton';
-import { StockStatus } from '../types';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow, format } from 'date-fns';
 import clsx from 'clsx';
 import api from '../lib/api';
+
+const PRICE_OPTIONS = [
+  { label: 'Any price', value: null },
+  { label: 'Under $100', value: 100 },
+  { label: 'Under $300', value: 300 },
+  { label: 'Under $500', value: 500 },
+  { label: 'Under $1000', value: 1000 },
+  { label: 'Under $1500', value: 1500 },
+];
+
+function Dropdown({ label, sublabel, options, value, onChange }: {
+  label: string; sublabel: string;
+  options: { label: string; value: any }[];
+  value: any; onChange: (v: any) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const selected = options.find(o => o.value === value);
+  return (
+    <div className="flex-1 relative" ref={ref}>
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 rounded-apple bg-dark-surface2 border border-dark-separator hover:bg-dark-surface3 transition-colors">
+        <div className="text-left">
+          <p className="text-caption2 text-dark-label3">{label}</p>
+          <p className="text-footnote text-white font-medium">{selected?.label ?? sublabel}</p>
+        </div>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={clsx('text-dark-label3 transition-transform', open && 'rotate-180')}>
+          <path d="M5 7L1 3h8L5 7z"/>
+        </svg>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+            className="absolute top-full left-0 right-0 mt-1 bg-dark-surface1 border border-dark-separator rounded-apple-lg shadow-apple-lg z-30 overflow-hidden">
+            {options.map(opt => (
+              <button key={String(opt.value)} onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={clsx('w-full text-left px-4 py-2.5 text-footnote transition-colors',
+                  opt.value === value ? 'text-apple-blue bg-apple-blue/10' : 'text-white hover:bg-dark-surface2')}>
+                {opt.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -20,6 +72,8 @@ export default function ProductPage() {
   const [trackLoading, setTrackLoading] = useState(false);
   const [showStockLog, setShowStockLog] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [priceLimit, setPriceLimit] = useState<number | null>(null);
+  const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: comments = [], refetch: refetchComments } = useQuery({
@@ -80,7 +134,26 @@ export default function ProductPage() {
     </div>
   );
 
-  const allStatuses = product.stockStatuses ?? [];
+  const allStatuses: any[] = product.stockStatuses ?? [];
+
+  // Build store filter options from available stores
+  const storeOptions = [
+    { label: 'All stores', value: null },
+    ...Array.from(new Set(allStatuses.map((s: any) => s.storeName))).map(name => ({ label: name, value: name })),
+  ];
+
+  // Apply filters
+  const filteredStatuses = allStatuses.filter((s: any) => {
+    if (storeFilter && s.storeName !== storeFilter) return false;
+    if (priceLimit !== null) {
+      // If in stock and no price, or price exceeds limit — hide
+      if (s.status === 'IN_STOCK' || s.status === 'LIMITED') {
+        if (s.price && s.price > priceLimit) return false;
+      }
+    }
+    return true;
+  });
+
   const inStockStatuses = allStatuses.filter((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED');
 
   return (
@@ -94,7 +167,7 @@ export default function ProductPage() {
 
       {/* Hero */}
       <div className="flex gap-5 mb-6">
-        <div className="w-24 h-24 rounded-apple-lg bg-dark-surface2 flex items-center justify-center overflow-hidden shrink-0">
+        <div className="w-24 h-24 rounded-apple-lg bg-dark-surface2 flex items-center justify-center overflow-hidden shrink-0 border border-dark-separator">
           {product.imageUrl
             ? <img src={product.imageUrl} alt={product.name} className="w-full h-full object-contain p-2" />
             : <span className="text-4xl opacity-30">📦</span>}
@@ -103,71 +176,104 @@ export default function ProductPage() {
           <p className="text-footnote text-apple-blue font-semibold capitalize mb-1">{product.category}</p>
           <h1 className="text-title2 font-bold text-white leading-tight mb-2">{product.name}</h1>
           {product.description && <p className="text-footnote text-dark-label2 leading-relaxed">{product.description}</p>}
+          {(product.trackingCount ?? 0) > 0 && (
+            <p className="text-caption2 text-dark-label3 mt-1">{(product.trackingCount ?? 0).toLocaleString()} people tracking</p>
+          )}
         </div>
       </div>
 
-      {/* Alert Me button */}
+      {/* Track It button */}
       <button
         onClick={handleTrackToggle}
         disabled={trackLoading}
         className={clsx(
-          'w-full py-4 rounded-apple-lg font-bold text-body mb-6 transition-all flex items-center justify-center gap-2',
+          'w-full py-4 rounded-apple-lg font-bold text-body mb-4 transition-all flex items-center justify-center gap-2',
           product.isTracking
-            ? 'bg-dark-surface2 border border-apple-blue text-apple-blue'
-            : 'bg-apple-red text-white hover:opacity-90'
+            ? 'bg-dark-surface2 border-2 border-apple-blue text-apple-blue'
+            : 'bg-apple-blue text-white hover:opacity-90 shadow-glow-blue'
         )}
       >
         {trackLoading && <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.37 0 0 5.37 0 12h4z"/></svg>}
-        {product.isTracking ? '✓ Alert Active — Tap to Remove' : '🔔 Alert Me'}
+        {product.isTracking ? '✓ Tracking — Tap to Remove' : '🔔 Track It'}
       </button>
 
-      {/* Price + tracking */}
-      <div className="flex items-center gap-4 mb-4">
-        {inStockStatuses.some((s: any) => s.price) && (
-          <div>
-            <p className="text-caption2 text-dark-label3 mb-0.5">Price Range</p>
-            <p className="text-title2 font-bold text-white">
-              ${Math.min(...inStockStatuses.filter((s: any) => s.price).map((s: any) => s.price!)).toFixed(2)}
-              {' – '}
-              ${Math.max(...inStockStatuses.filter((s: any) => s.price).map((s: any) => s.price!)).toFixed(2)}
-            </p>
-          </div>
-        )}
-        {(product.trackingCount ?? 0) > 0 && (
-          <span className="text-footnote text-dark-label2">{(product.trackingCount ?? 0).toLocaleString()} tracking</span>
-        )}
-      </div>
+      {/* Price range */}
+      {inStockStatuses.some((s: any) => s.price) && (
+        <div className="mb-4">
+          <p className="text-caption2 text-dark-label3 mb-0.5">Price Range</p>
+          <p className="text-title2 font-bold text-white">
+            ${Math.min(...inStockStatuses.filter((s: any) => s.price).map((s: any) => s.price!)).toFixed(2)}
+            {' – '}
+            ${Math.max(...inStockStatuses.filter((s: any) => s.price).map((s: any) => s.price!)).toFixed(2)}
+          </p>
+        </div>
+      )}
 
       {/* Filter row */}
       <div className="flex gap-3 mb-4">
-        <div className="flex-1 flex items-center justify-between px-4 py-2.5 rounded-apple bg-dark-surface2 border border-dark-separator cursor-default">
-          <div><p className="text-caption2 text-dark-label3">Price limit</p><p className="text-footnote text-dark-label2">Any price</p></div>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-dark-label3"><path d="M5 7L1 3h8L5 7z"/></svg>
-        </div>
-        <div className="flex-1 flex items-center justify-between px-4 py-2.5 rounded-apple bg-dark-surface2 border border-dark-separator cursor-default">
-          <div><p className="text-caption2 text-dark-label3">Filter alerts</p><p className="text-footnote text-dark-label2">All stores</p></div>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-dark-label3"><path d="M5 7L1 3h8L5 7z"/></svg>
-        </div>
+        <Dropdown
+          label="Price limit"
+          sublabel="Any price"
+          options={PRICE_OPTIONS}
+          value={priceLimit}
+          onChange={setPriceLimit}
+        />
+        <Dropdown
+          label="Filter alerts"
+          sublabel="All stores"
+          options={storeOptions}
+          value={storeFilter}
+          onChange={setStoreFilter}
+        />
       </div>
 
-      {/* Store list */}
+      {/* Active filter chips */}
+      {(priceLimit !== null || storeFilter !== null) && (
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {priceLimit !== null && (
+            <button onClick={() => setPriceLimit(null)}
+              className="flex items-center gap-1 px-3 py-1 rounded-pill bg-apple-blue/15 text-apple-blue text-caption1 font-semibold">
+              Under ${priceLimit} ✕
+            </button>
+          )}
+          {storeFilter !== null && (
+            <button onClick={() => setStoreFilter(null)}
+              className="flex items-center gap-1 px-3 py-1 rounded-pill bg-apple-blue/15 text-apple-blue text-caption1 font-semibold">
+              {storeFilter} ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Store availability list */}
       <div className="card divide-y divide-dark-separator mb-4">
-        {allStatuses.length === 0
-          ? <div className="p-8 text-center text-dark-label2 text-footnote">No stock data yet.</div>
-          : allStatuses.map((s: any, i: number) => {
+        {filteredStatuses.length === 0
+          ? <div className="p-8 text-center text-dark-label2 text-footnote">
+              {allStatuses.length === 0 ? 'No stores added yet. Admin can add store links.' : 'No stores match your filters.'}
+            </div>
+          : filteredStatuses.map((s: any, i: number) => {
             const isInStock = s.status === 'IN_STOCK' || s.status === 'LIMITED';
             return (
-              <motion.a key={s.storeId ?? i} href={s.productUrl ?? s.url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-3 px-4 py-3.5 hover:bg-dark-surface2 transition-colors"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}>
+              <motion.a key={s.storeId ?? i} href={s.productUrl ?? '#'} target="_blank" rel="noopener noreferrer"
+                className={clsx('flex items-center gap-3 px-4 py-3.5 transition-colors', s.productUrl ? 'hover:bg-dark-surface2' : 'cursor-default')}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
+                onClick={!s.productUrl ? (e) => e.preventDefault() : undefined}>
                 {s.storeLogo
-                  ? <img src={s.storeLogo} alt={s.storeName} className="w-10 h-10 object-contain rounded-full bg-white p-1 shrink-0" />
-                  : <div className="w-10 h-10 rounded-full bg-dark-surface2 flex items-center justify-center text-lg shrink-0">🏪</div>}
+                  ? <img src={s.storeLogo} alt={s.storeName} className="w-10 h-10 object-contain rounded-full bg-white p-1 shrink-0 border border-dark-separator" />
+                  : <div className="w-10 h-10 rounded-full bg-dark-surface2 border border-dark-separator flex items-center justify-center shrink-0">
+                      <span className="text-footnote font-bold text-white">{s.storeName?.[0]}</span>
+                    </div>
+                }
                 <div className="flex-1 min-w-0">
                   <p className="text-subhead font-semibold text-white">{s.storeName}</p>
                   {s.price && <p className="text-caption1 text-apple-blue font-semibold">${s.price.toFixed(2)}</p>}
+                  {s.lastCheckedAt && (
+                    <p className="text-caption2 text-dark-label3">
+                      Updated {formatDistanceToNow(new Date(s.lastCheckedAt), { addSuffix: true })}
+                    </p>
+                  )}
                 </div>
-                <div className={clsx('px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[110px] text-center',
+                <div className={clsx('px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[120px] text-center',
                   isInStock ? 'bg-apple-green text-white' : 'border border-dark-separator text-dark-label2')}>
                   {isInStock ? 'IN STOCK' : 'OUT OF STOCK'}
                 </div>
@@ -177,9 +283,16 @@ export default function ProductPage() {
         }
       </div>
 
+      {/* Admin: add store link hint */}
+      {user?.role === 'ADMIN' && (
+        <p className="text-caption2 text-dark-label3 mb-4 text-center">
+          Admin: go to <Link to="/admin/products" className="text-apple-blue hover:underline">Admin → Products</Link> to add store links for this product.
+        </p>
+      )}
+
       {/* Stock log link */}
       <button onClick={() => setShowStockLog(!showStockLog)}
-        className="text-apple-red text-footnote font-semibold hover:opacity-80 transition-opacity mb-6 flex items-center gap-1">
+        className="text-apple-blue text-footnote font-semibold hover:opacity-80 transition-opacity mb-6 flex items-center gap-1">
         Stock log: see when stores had stock
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M2 6h8M6 2l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -194,25 +307,25 @@ export default function ProductPage() {
             {(stockHistory as any[]).length === 0
               ? <div className="card p-6 text-center text-dark-label2 text-footnote">No history yet. Builds as the scraper runs.</div>
               : <div className="card divide-y divide-dark-separator">
-                {(stockHistory as any[]).map((event: any) => (
-                  <div key={event.id} className="flex items-start justify-between px-4 py-3.5">
-                    <div className="flex-1 min-w-0 pr-4">
-                      <p className="text-subhead font-semibold text-white">{event.storeName}</p>
-                      {event.productUrl && (
-                        <a href={event.productUrl} target="_blank" rel="noopener noreferrer" className="text-caption1 text-apple-blue hover:underline truncate block">
-                          {product.name}
-                        </a>
-                      )}
+                  {(stockHistory as any[]).map((event: any) => (
+                    <div key={event.id} className="flex items-start justify-between px-4 py-3.5">
+                      <div className="flex-1 min-w-0 pr-4">
+                        <p className="text-subhead font-semibold text-white">{event.storeName}</p>
+                        {event.productUrl && (
+                          <a href={event.productUrl} target="_blank" rel="noopener noreferrer" className="text-caption1 text-apple-blue hover:underline truncate block">
+                            {product.name}
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={clsx('text-footnote font-bold', event.status === 'IN_STOCK' ? 'text-apple-green' : 'text-dark-label3')}>
+                          {event.status === 'IN_STOCK' ? 'In stock' : 'Out of stock'}
+                        </p>
+                        <p className="text-caption2 text-dark-label3">{format(new Date(event.createdAt), 'M/d/yyyy, h:mm aa')}</p>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className={clsx('text-footnote font-bold', event.status === 'IN_STOCK' ? 'text-apple-green' : 'text-dark-label3')}>
-                        {event.status === 'IN_STOCK' ? 'In stock' : 'Out of stock'}
-                      </p>
-                      <p className="text-caption2 text-dark-label3">{format(new Date(event.createdAt), 'M/d/yyyy, h:mm aa')}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
             }
           </motion.div>
         )}
@@ -267,7 +380,6 @@ export default function ProductPage() {
             ))
           }
         </div>
-
         {!user && (
           <p className="text-footnote text-dark-label2 mt-4 text-center">
             <Link to="/login" className="text-apple-blue hover:underline">Sign in</Link> to post comments and track this item.

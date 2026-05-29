@@ -27,6 +27,8 @@ const EMPTY_FORM: ProductForm = {
   isActive: true,
 };
 
+interface StoreForm { storeId: string; url: string; price: string; }
+
 export default function AdminProducts() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -35,6 +37,8 @@ export default function AdminProducts() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [storeProduct, setStoreProduct] = useState<Product | null>(null);
+  const [storeForm, setStoreForm] = useState<StoreForm>({ storeId: '', url: '', price: '' });
 
   const { data, isLoading } = useQuery<{ data: Product[]; total: number; totalPages: number }>({
     queryKey: ['admin-products', search, page],
@@ -78,6 +82,38 @@ export default function AdminProducts() {
     mutationFn: async (id: string) => api.post(`/admin/products/${id}/scrape`),
     onSuccess: () => toast.success('Scrape queued'),
     onError: () => toast.error('Failed to queue scrape'),
+  });
+
+  // Stores
+  const { data: allStores = [] } = useQuery<any[]>({
+    queryKey: ['stores'],
+    queryFn: async () => { const { data } = await api.get('/products/stores'); return data; },
+  });
+
+  const { data: productStoreListings = [], refetch: refetchStoreListings } = useQuery<any[]>({
+    queryKey: ['product-stores', storeProduct?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${storeProduct!.slug}`);
+      return data.stockStatuses ?? [];
+    },
+    enabled: !!storeProduct,
+  });
+
+  const addStoreListing = useMutation({
+    mutationFn: async (body: { productId: string; storeId: string; url: string; price?: number }) =>
+      api.post('/admin/store-products', body),
+    onSuccess: () => {
+      refetchStoreListings();
+      setStoreForm({ storeId: '', url: '', price: '' });
+      toast.success('Store link added');
+    },
+    onError: () => toast.error('Failed to add store link'),
+  });
+
+  const removeStoreListing = useMutation({
+    mutationFn: async (storeProductId: string) => api.delete(`/admin/store-products/${storeProductId}`),
+    onSuccess: () => { refetchStoreListings(); toast.success('Store link removed'); },
+    onError: () => toast.error('Failed to remove store link'),
   });
 
   const openCreate = () => {
@@ -210,6 +246,15 @@ export default function AdminProducts() {
                     </svg>
                   </Link>
                   <button
+                    onClick={() => { setStoreProduct(p); setStoreForm({ storeId: '', url: '', price: '' }); }}
+                    className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-purple hover:bg-apple-purple/10"
+                    title="Manage store links"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 3h12M1 7h12M1 11h12"/>
+                    </svg>
+                  </button>
+                  <button
                     onClick={() => triggerScrape.mutate(p.id)}
                     className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-green hover:bg-apple-green/10"
                     title="Trigger scrape"
@@ -336,6 +381,82 @@ export default function AdminProducts() {
               className="btn-primary flex-1 py-3"
             >
               {(createProduct.isPending || updateProduct.isPending) ? 'Saving…' : editProduct ? 'Save Changes' : 'Create Product'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Store Links Modal */}
+      <Modal isOpen={!!storeProduct} onClose={() => setStoreProduct(null)} title={`Store Links: ${storeProduct?.name}`}>
+        <div className="space-y-4">
+          {/* Existing listings */}
+          {productStoreListings.length > 0 && (
+            <div>
+              <p className="text-footnote font-semibold text-dark-label2 mb-2">Current Stores</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {productStoreListings.map((s: any) => (
+                  <div key={s.storeId} className="flex items-center justify-between gap-3 px-3 py-2 rounded-apple bg-dark-surface2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-footnote font-semibold text-white">{s.storeName}</p>
+                      <p className="text-caption2 text-dark-label3 truncate">{s.productUrl}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-caption2 font-semibold ${s.status === 'IN_STOCK' ? 'text-apple-green' : 'text-dark-label3'}`}>
+                        {s.status === 'IN_STOCK' ? '● In Stock' : '○ Out'}
+                      </span>
+                      {s.storeProductId && (
+                        <button onClick={() => removeStoreListing.mutate(s.storeProductId)}
+                          className="text-caption2 text-apple-red hover:underline">Remove</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add new store link */}
+          <div className="border-t border-dark-separator pt-4">
+            <p className="text-footnote font-semibold text-dark-label2 mb-3">Add Store Link</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-caption2 text-dark-label3 mb-1">Store *</label>
+                <select value={storeForm.storeId} onChange={(e) => setStoreForm(f => ({ ...f, storeId: e.target.value }))}
+                  className="input">
+                  <option value="">Select a store…</option>
+                  {(allStores as any[]).map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-caption2 text-dark-label3 mb-1">Product URL at this store *</label>
+                <input type="url" value={storeForm.url} onChange={(e) => setStoreForm(f => ({ ...f, url: e.target.value }))}
+                  className="input" placeholder="https://www.bestbuy.com/site/..." />
+              </div>
+              <div>
+                <label className="block text-caption2 text-dark-label3 mb-1">Price (optional)</label>
+                <input type="number" value={storeForm.price} onChange={(e) => setStoreForm(f => ({ ...f, price: e.target.value }))}
+                  className="input" placeholder="999.99" step="0.01" min="0" />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button onClick={() => setStoreProduct(null)} className="btn-secondary flex-1 py-3">Close</button>
+            <button
+              onClick={() => {
+                if (!storeProduct || !storeForm.storeId || !storeForm.url) { toast.error('Store and URL are required'); return; }
+                addStoreListing.mutate({
+                  productId: storeProduct.id,
+                  storeId: storeForm.storeId,
+                  url: storeForm.url,
+                  price: storeForm.price ? parseFloat(storeForm.price) : undefined,
+                });
+              }}
+              disabled={addStoreListing.isPending || !storeForm.storeId || !storeForm.url}
+              className="btn-primary flex-1 py-3"
+            >
+              {addStoreListing.isPending ? 'Adding…' : 'Add Store Link'}
             </button>
           </div>
         </div>

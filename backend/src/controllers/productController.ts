@@ -78,7 +78,26 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
     if (!product) { res.status(404).json({ error: 'Product not found' }); return; }
 
     await prisma.product.update({ where: { id: product.id }, data: { viewCount: { increment: 1 } } });
-    res.json(product);
+
+    // Map to frontend shape
+    const result = {
+      ...product,
+      trackingCount: (product as any)._count?.trackings ?? 0,
+      stockStatuses: product.storeListings.map((sl: any) => ({
+        storeId: sl.storeId,
+        storeName: sl.store?.name,
+        storeSlug: sl.store?.slug,
+        storeLogo: sl.store?.logoUrl,
+        status: sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+        price: sl.price,
+        productUrl: sl.url,
+        lastCheckedAt: sl.lastChecked,
+        storeProductId: sl.id,
+      })),
+      bestStatus: product.storeListings.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',
+      lowestPrice: product.storeListings.filter((sl: any) => sl.inStock && sl.price).map((sl: any) => sl.price).sort((a: number, b: number) => a - b)[0] ?? null,
+    };
+    res.json(result);
   } catch (error) {
     logger.error('GetProductBySlug error', error);
     res.status(500).json({ error: 'Failed to fetch product' });

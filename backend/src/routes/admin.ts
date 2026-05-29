@@ -17,5 +17,14 @@ router.delete('/products/:id', deleteProduct);
 router.post('/products/:id/scrape', scrapeProduct);
 router.post('/scrape-all', scrapeAll);
 router.post('/store-products', addStoreProduct);
+router.delete('/store-products/:id', async (req, res) => {
+  try {
+    const { prisma } = await import('../config/database');
+    await prisma.storeProduct.delete({ where: { id: req.params.id } });
+    res.json({ message: 'Store link removed' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to remove store link' });
+  }
+});
 
 export default router;
