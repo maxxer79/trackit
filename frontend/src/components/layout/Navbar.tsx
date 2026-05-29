@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth';
 import { useThemeStore } from '../../store/theme';
 import clsx from 'clsx';
@@ -11,10 +11,23 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { theme, setTheme } = useThemeStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
-  // Close dropdown on any navigation
+  // Close on route change
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
+  // Close on any click outside the menu
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
 
   const handleLogout = async () => {
     await logout();
@@ -76,9 +89,9 @@ export default function Navbar() {
           </button>
 
           {user ? (
-            <div className="relative">
+            <div className="relative" ref={menuRef}>
               <button
-                onClick={() => setMenuOpen(!menuOpen)}
+                onClick={() => setMenuOpen(v => !v)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-pill bg-dark-surface2 border border-dark-separator hover:bg-dark-surface3 transition-colors"
               >
                 <div className="w-7 h-7 rounded-full bg-apple-blue flex items-center justify-center text-xs font-bold">
@@ -87,22 +100,23 @@ export default function Navbar() {
                 <span className="text-subhead font-medium text-white hidden sm:block">
                   {user.name || user.email.split('@')[0]}
                 </span>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="text-dark-label2">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className={clsx('text-dark-label2 transition-transform duration-150', menuOpen && 'rotate-180')}>
                   <path d="M6 8L1 3h10L6 8z" />
                 </svg>
               </button>
 
-              <AnimatePresence>
-                {menuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                    <motion.div
-                      className="absolute right-0 top-full mt-2 w-52 bg-dark-surface1 border border-dark-separator rounded-apple-lg shadow-apple-lg z-20 overflow-hidden"
-                      initial={{ opacity: 0, y: -8, scale: 0.97 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                      transition={{ duration: 0.15 }}
-                    >
+              {menuOpen && (
+                <>
+                  {/* Full-screen backdrop — catches all outside clicks including touch */}
+                  <div
+                    className="fixed inset-0 z-10"
+                    onMouseDown={() => setMenuOpen(false)}
+                    onTouchStart={() => setMenuOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 top-full mt-2 w-52 bg-dark-surface1 border border-dark-separator rounded-apple-lg shadow-apple-lg z-20 overflow-hidden"
+                    style={{ animation: 'fadeSlideDown 0.12s ease' }}
+                  >
                       <div className="px-4 py-3 border-b border-dark-separator">
                         <p className="text-footnote font-semibold text-white truncate">{user.name || 'User'}</p>
                         <p className="text-caption1 text-dark-label2 truncate">{user.email}</p>
@@ -116,23 +130,22 @@ export default function Navbar() {
                           <Link
                             key={to}
                             to={to}
-                            onClick={() => setMenuOpen(false)}
+                            onMouseDown={() => setMenuOpen(false)}
                             className="block px-3 py-2 text-subhead text-white hover:bg-dark-surface2 rounded-apple transition-colors"
                           >
                             {label}
                           </Link>
                         ))}
                         <button
-                          onClick={handleLogout}
+                          onMouseDown={handleLogout}
                           className="w-full text-left px-3 py-2 text-subhead text-apple-red hover:bg-apple-red/10 rounded-apple transition-colors mt-1"
                         >
                           Sign Out
                         </button>
                       </div>
-                    </motion.div>
+                    </div>
                   </>
                 )}
-              </AnimatePresence>
             </div>
           ) : (
             <div className="flex items-center gap-2">
