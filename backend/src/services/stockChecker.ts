@@ -22,6 +22,22 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
       data: { inStock: nowInStock, lastChecked: new Date(), checkCount: { increment: 1 } },
     });
 
+    // Log every stock status change
+    if (wasInStock !== nowInStock) {
+      await prisma.stockEvent.create({
+        data: {
+          productId: sp.productId,
+          storeProductId: sp.id,
+          storeName: sp.store.name,
+          storeSlug: sp.store.slug,
+          productName: sp.product.name,
+          status: nowInStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+          price: sp.price ?? null,
+          productUrl: sp.url,
+        },
+      });
+    }
+
     // If stock changed from out → in, notify all trackers
     if (!wasInStock && nowInStock) {
       const trackings = await prisma.tracking.findMany({

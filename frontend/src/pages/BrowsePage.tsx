@@ -5,6 +5,7 @@ import { ProductCardSkeleton } from '../components/ui/Skeleton';
 import clsx from 'clsx';
 
 const LIMIT = 24;
+type Tab = 'all' | 'featured' | 'new';
 
 export default function BrowsePage() {
   const [page, setPage] = useState(1);
@@ -12,8 +13,13 @@ export default function BrowsePage() {
   const [category, setCategory] = useState('');
   const [inStock, setInStock] = useState(false);
   const [searchInput, setSearchInput] = useState('');
+  const [tab, setTab] = useState<Tab>('all');
 
-  const { data, isLoading } = useProducts({ page, limit: LIMIT, search, category, inStock });
+  const { data, isLoading } = useProducts({
+    page, limit: LIMIT, search, category, inStock,
+    featured: tab === 'featured' || undefined,
+    newlyAdded: tab === 'new' || undefined,
+  });
   const { data: categories } = useCategories();
 
   const handleSearch = useCallback((e: React.FormEvent) => {
@@ -38,6 +44,24 @@ export default function BrowsePage() {
       <div className="mb-8">
         <h1 className="section-title">Browse Products</h1>
         <p className="section-subtitle">Track availability across 70+ retailers</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-dark-separator">
+        {(['all', 'featured', 'new'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => { setTab(t); setPage(1); }}
+            className={clsx(
+              'px-5 py-2.5 text-footnote font-semibold capitalize transition-all border-b-2 -mb-px',
+              tab === t
+                ? 'border-apple-blue text-apple-blue'
+                : 'border-transparent text-dark-label2 hover:text-white'
+            )}
+          >
+            {t === 'new' ? 'Recent' : t === 'featured' ? '⭐ Featured' : 'All'}
+          </button>
+        ))}
       </div>
 
       {/* Search bar */}
