@@ -4,13 +4,15 @@ import logger from '../utils/logger';
 
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { q, category, page = '1', limit = '24', sort = 'popular', featured, isNew } = req.query;
+    const { q, search, category, page = '1', limit = '24', sort = 'popular', featured, isNew, inStock } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
+    const searchTerm = (search || q) as string | undefined;
+
     const where: any = { isActive: true };
-    if (q) { where.name = { contains: q as string, mode: 'insensitive' }; }
+    if (searchTerm) { where.name = { contains: searchTerm, mode: 'insensitive' }; }
     if (category) { where.category = category as string; }
     if (featured === 'true') { where.isFeatured = true; }
     if (isNew === 'true') { where.isNew = true; }
@@ -26,6 +28,7 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
           storeListings: {
             include: { store: true },
             orderBy: { price: 'asc' },
+            where: inStock === 'true' ? { inStock: true } : undefined,
           },
           _count: { select: { trackings: { where: { isActive: true } } } },
         },
@@ -33,10 +36,25 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
       prisma.product.count({ where }),
     ]);
 
-    res.json({
-      products,
-      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
-    });
+    // Map to frontend-expected shape
+    const data = products.map((p: any) => ({
+      ...p,
+      trackingCount: p._count?.trackings ?? 0,
+      stockStatuses: p.storeListings?.map((sl: any) => ({
+        storeId: sl.storeId,
+        storeName: sl.store?.name,
+        storeSlug: sl.store?.slug,
+        storeLogo: sl.store?.logoUrl,
+        status: sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+        price: sl.price,
+        productUrl: sl.url,
+        lastCheckedAt: sl.lastChecked,
+      })) ?? [],
+      bestStatus: p.storeListings?.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',
+      lowestPrice: p.storeListings?.filter((sl: any) => sl.inStock && sl.price).map((sl: any) => sl.price).sort((a: number, b: number) => a - b)[0] ?? null,
+    }));
+
+    res.json({ data, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) });
   } catch (error) {
     logger.error('GetProducts error', error);
     res.status(500).json({ error: 'Failed to fetch products' });
