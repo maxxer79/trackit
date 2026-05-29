@@ -96,7 +96,7 @@ export default function BrowsePage() {
       {/* Results count */}
       {data && (
         <p className="text-footnote text-dark-label2 mb-4">
-          {data.total.toLocaleString()} product{data.total !== 1 ? 's' : ''}
+          {(data.total ?? 0).toLocaleString()} product{(data.total ?? 0) !== 1 ? 's' : ''}
           {search && <span> matching "{search}"</span>}
         </p>
       )}
