@@ -19,6 +19,7 @@ const AdminPage      = lazy(() => import('./pages/admin/AdminPage'));
 const AdminUsers     = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminProducts  = lazy(() => import('./pages/admin/AdminProducts'));
 const AdminLogs      = lazy(() => import('./pages/admin/AdminLogs'));
+const AdminStores    = lazy(() => import('./pages/admin/AdminStores'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/admin/users"    element={<RequireAuth><RequireAdmin><AdminUsers /></RequireAdmin></RequireAuth>} />
           <Route path="/admin/products" element={<RequireAuth><RequireAdmin><AdminProducts /></RequireAdmin></RequireAuth>} />
           <Route path="/admin/logs"     element={<RequireAuth><RequireAdmin><AdminLogs /></RequireAdmin></RequireAuth>} />
+          <Route path="/admin/stores"   element={<RequireAuth><RequireAdmin><AdminStores /></RequireAdmin></RequireAuth>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/browse" replace />} />

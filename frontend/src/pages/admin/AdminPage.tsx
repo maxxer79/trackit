@@ -93,6 +93,7 @@ export default function AdminPage() {
         {[
           { to: '/admin/users', icon: '👥', title: 'Users', desc: 'Manage accounts & limits' },
           { to: '/admin/products', icon: '📦', title: 'Products', desc: 'Add, edit, delete products' },
+          { to: '/admin/stores', icon: '🏪', title: 'Retailers', desc: 'Manage store logos & links' },
           { to: '/admin/logs', icon: '📋', title: 'Scraper Logs', desc: 'Monitor scraper health' },
           { to: '/browse', icon: '🛍', title: 'Browse', desc: 'View product catalog' },
         ].map(({ to, icon, title, desc }) => (

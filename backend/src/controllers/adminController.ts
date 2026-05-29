@@ -215,6 +215,68 @@ export const scrapeAll = async (_req: Request, res: Response): Promise<void> => 
   }
 };
 
+export const getAdminStores = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const stores = await prisma.store.findMany({ orderBy: { sortOrder: 'asc' } });
+    res.json(stores);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch stores' });
+  }
+};
+
+export const createAdminStore = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, slug, domain, logoUrl, country, sortOrder } = req.body;
+    if (!name || !slug) { res.status(400).json({ error: 'Name and slug are required' }); return; }
+    const store = await prisma.store.create({
+      data: {
+        name, slug,
+        domain: domain || null,
+        logoUrl: logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null),
+        country: country || 'us',
+        sortOrder: sortOrder ? parseInt(sortOrder) : 99,
+        isActive: true,
+      },
+    });
+    res.status(201).json(store);
+  } catch (error: any) {
+    if (error.code === 'P2002') { res.status(409).json({ error: 'Slug already exists' }); return; }
+    res.status(500).json({ error: 'Failed to create store' });
+  }
+};
+
+export const updateAdminStore = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { name, slug, domain, logoUrl, country, sortOrder, isActive } = req.body;
+    const store = await prisma.store.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(slug && { slug }),
+        ...(domain !== undefined && { domain }),
+        ...(logoUrl !== undefined && { logoUrl }),
+        ...(country && { country }),
+        ...(sortOrder !== undefined && { sortOrder: parseInt(sortOrder) }),
+        ...(isActive !== undefined && { isActive }),
+      },
+    });
+    res.json(store);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update store' });
+  }
+};
+
+export const deleteAdminStore = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await prisma.store.update({ where: { id }, data: { isActive: false } });
+    res.json({ message: 'Store deactivated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete store' });
+  }
+};
+
 export const addStoreProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const { productId, storeId, url, price } = req.body;
