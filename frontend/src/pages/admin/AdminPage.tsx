@@ -1,11 +1,18 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '../../lib/api';
 import { AdminStats } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
+import toast from 'react-hot-toast';
 
 export default function AdminPage() {
+  const scrapeAll = useMutation({
+    mutationFn: () => api.post('/admin/scrape-all'),
+    onSuccess: () => toast.success('Full stock check queued — running in background'),
+    onError: () => toast.error('Failed to queue scrape'),
+  });
+
   const { data: stats, isLoading } = useQuery<AdminStats>({
     queryKey: ['admin-stats'],
     queryFn: async () => {
@@ -28,9 +35,21 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h1 className="section-title">Admin Dashboard</h1>
-        <p className="section-subtitle">System overview and management</p>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="section-title">Admin Dashboard</h1>
+          <p className="section-subtitle">System overview and management</p>
+        </div>
+        <button
+          onClick={() => scrapeAll.mutate()}
+          disabled={scrapeAll.isPending}
+          className="btn-secondary px-5 py-2.5 text-subhead flex items-center gap-2 hover:text-apple-green hover:border-apple-green/50"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={scrapeAll.isPending ? 'animate-spin' : ''}>
+            <path d="M12 7A5 5 0 1 1 7 2"/><path d="M12 2v3h-3"/>
+          </svg>
+          {scrapeAll.isPending ? 'Queuing…' : 'Scrape All'}
+        </button>
       </div>
 
       {/* Stats grid */}

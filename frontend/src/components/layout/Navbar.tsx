@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/auth';
 import { useThemeStore } from '../../store/theme';
@@ -11,6 +11,10 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { theme, setTheme } = useThemeStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+
+  // Close dropdown on any navigation
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();

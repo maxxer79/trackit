@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
+import { checkStockForProduct, runStockCheck } from '../services/stockChecker';
 import logger from '../utils/logger';
 
 export const getDashboardStats = async (_req: Request, res: Response): Promise<void> => {
@@ -69,6 +70,27 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     logger.error('GetUsers error', error);
     res.status(500).json({ error: 'Failed to fetch users' });
+  }
+};
+
+export const createAdminUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, email, password, role, trackingLimit } = req.body;
+    if (!name || !email || !password) {
+      res.status(400).json({ error: 'Name, email and password are required' });
+      return;
+    }
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) { res.status(409).json({ error: 'Email already registered' }); return; }
+    const hashed = await bcrypt.hash(password, 12);
+    const user = await prisma.user.create({
+      data: { name, email, password: hashed, role: role || 'USER', trackingLimit: trackingLimit ? parseInt(trackingLimit) : 10 },
+      select: { id: true, email: true, name: true, role: true, trackingLimit: true, isActive: true, createdAt: true },
+    });
+    res.status(201).json(user);
+  } catch (error) {
+    logger.error('CreateAdminUser error', error);
+    res.status(500).json({ error: 'Failed to create user' });
   }
 };
 
@@ -163,6 +185,33 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     logger.error('DeleteProduct error', error);
     res.status(500).json({ error: 'Failed to delete product' });
+  }
+};
+
+export const scrapeProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const storeProducts = await prisma.storeProduct.findMany({
+      where: { productId: id },
+      select: { id: true },
+    });
+    // Run in background
+    Promise.allSettled(storeProducts.map(sp => checkStockForProduct(sp.id)));
+    res.json({ message: `Scrape queued for ${storeProducts.length} listings` });
+  } catch (error) {
+    logger.error('ScrapeProduct error', error);
+    res.status(500).json({ error: 'Failed to queue scrape' });
+  }
+};
+
+export const scrapeAll = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    // Run in background, respond immediately
+    runStockCheck();
+    res.json({ message: 'Full stock check queued' });
+  } catch (error) {
+    logger.error('ScrapeAll error', error);
+    res.status(500).json({ error: 'Failed to queue scrape' });
   }
 };
 
