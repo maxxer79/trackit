@@ -50,14 +50,14 @@ export const useAuthStore = create<AuthState>()(
 
       login: async (email, password) => {
         const { data } = await api.post('/auth/login', { email, password });
-        get().setAccessToken(data.accessToken);
+        get().setAccessToken(data.accessToken ?? data.token);
         set({ user: data.user });
         connectSocket();
       },
 
       register: async (email, password, name) => {
         const { data } = await api.post('/auth/register', { email, password, name });
-        get().setAccessToken(data.accessToken);
+        get().setAccessToken(data.accessToken ?? data.token);
         set({ user: data.user });
         connectSocket();
       },
