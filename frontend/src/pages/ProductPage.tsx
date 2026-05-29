@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { formatDistanceToNow, format } from 'date-fns';
 import clsx from 'clsx';
 import api from '../lib/api';
+import StoreLogo from '../components/ui/StoreLogo';
 
 const PRICE_OPTIONS = [
   { label: 'Any price', value: null },
@@ -258,12 +259,7 @@ export default function ProductPage() {
                 className={clsx('flex items-center gap-3 px-4 py-3.5 transition-colors', s.productUrl ? 'hover:bg-dark-surface2' : 'cursor-default')}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                 onClick={!s.productUrl ? (e) => e.preventDefault() : undefined}>
-                {s.storeLogo
-                  ? <img src={s.storeLogo} alt={s.storeName} className="w-10 h-10 object-contain rounded-full bg-white p-1 shrink-0 border border-dark-separator" />
-                  : <div className="w-10 h-10 rounded-full bg-dark-surface2 border border-dark-separator flex items-center justify-center shrink-0">
-                      <span className="text-footnote font-bold text-white">{s.storeName?.[0]}</span>
-                    </div>
-                }
+                <StoreLogo logoUrl={s.storeLogo} domain={s.storeSlug ? `${s.storeSlug}.com` : null} name={s.storeName ?? ''} />
                 <div className="flex-1 min-w-0">
                   <p className="text-subhead font-semibold text-white">{s.storeName}</p>
                   {s.price && <p className="text-caption1 text-apple-blue font-semibold">${s.price.toFixed(2)}</p>}

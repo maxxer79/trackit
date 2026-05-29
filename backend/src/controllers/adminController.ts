@@ -232,7 +232,7 @@ export const createAdminStore = async (req: Request, res: Response): Promise<voi
       data: {
         name, slug,
         domain: domain || null,
-        logoUrl: logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null),
+        logoUrl: logoUrl || (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : null),
         country: country || 'us',
         sortOrder: sortOrder ? parseInt(sortOrder) : 99,
         isActive: true,

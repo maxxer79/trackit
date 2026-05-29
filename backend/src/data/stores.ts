@@ -1,5 +1,6 @@
 function logo(domain: string) {
-  return `https://logo.clearbit.com/${domain}`;
+  // Google's favicon service — free, no auth, always returns an image
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 }
 
 export const STORES = [

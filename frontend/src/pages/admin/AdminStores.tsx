@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
 import Modal from '../../components/ui/Modal';
+import StoreLogo from '../../components/ui/StoreLogo';
 import toast from 'react-hot-toast';
 
 interface Store {
@@ -18,20 +19,6 @@ interface Store {
 
 const EMPTY_FORM = { name: '', slug: '', domain: '', logoUrl: '', country: 'us', sortOrder: '99' };
 
-function StoreLogoPreview({ url, name }: { url: string; name: string }) {
-  const [err, setErr] = useState(false);
-  if (!url || err) {
-    return (
-      <div className="w-10 h-10 rounded-full bg-dark-surface2 border border-dark-separator flex items-center justify-center shrink-0">
-        <span className="text-footnote font-bold text-white">{name?.[0] ?? '?'}</span>
-      </div>
-    );
-  }
-  return (
-    <img src={url} alt={name} onError={() => setErr(true)}
-      className="w-10 h-10 rounded-full object-contain bg-white p-1 border border-dark-separator shrink-0" />
-  );
-}
 
 export default function AdminStores() {
   const qc = useQueryClient();
@@ -142,7 +129,7 @@ export default function AdminStores() {
             <motion.div key={store.id}
               className="flex items-center gap-4 px-5 py-3.5 hover:bg-dark-surface2 transition-colors"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}>
-              <StoreLogoPreview url={store.logoUrl ?? ''} name={store.name} />
+              <StoreLogo logoUrl={store.logoUrl} domain={store.domain} name={store.name} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-subhead font-semibold text-white truncate">{store.name}</p>
