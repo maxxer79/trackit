@@ -5,6 +5,7 @@ import api from '../../lib/api';
 import { AdminStats } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { APP_VERSION, BUILD_DATE } from '../../version';
 
 export default function AdminPage() {
   const scrapeAll = useMutation({
@@ -128,6 +129,17 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Version footer */}
+      <div className="mt-10 pt-6 border-t border-dark-separator flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-caption2 font-mono px-2 py-0.5 rounded bg-dark-surface2 text-apple-blue border border-apple-blue/20">
+            v{APP_VERSION}
+          </span>
+          <span className="text-caption2 text-dark-label3">TrackIt Admin</span>
+        </div>
+        <span className="text-caption2 text-dark-label3">Built {BUILD_DATE}</span>
+      </div>
     </div>
   );
 }
