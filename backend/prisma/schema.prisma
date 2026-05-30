@@ -67,6 +67,7 @@ model Store {
   slug      String  @unique
   logoUrl   String?
   domain    String?
+  searchUrl String? // e.g. https://www.bestbuy.com/site/searchpage.jsp?st={query}
   country   String  @default("us")
   isActive  Boolean @default(true)
   sortOrder Int     @default(0)

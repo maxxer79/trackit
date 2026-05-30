@@ -17,7 +17,7 @@ interface Store {
   sortOrder: number;
 }
 
-const EMPTY_FORM = { name: '', slug: '', domain: '', logoUrl: '', country: 'us', sortOrder: '99' };
+const EMPTY_FORM = { name: '', slug: '', domain: '', logoUrl: '', searchUrl: '', country: 'us', sortOrder: '99' };
 
 
 export default function AdminStores() {
@@ -64,7 +64,7 @@ export default function AdminStores() {
   const openCreate = () => { setEditStore(null); setForm(EMPTY_FORM); setShowModal(true); };
   const openEdit = (s: Store) => {
     setEditStore(s);
-    setForm({ name: s.name, slug: s.slug, domain: s.domain ?? '', logoUrl: s.logoUrl ?? '', country: s.country, sortOrder: String(s.sortOrder) });
+    setForm({ name: s.name, slug: s.slug, domain: s.domain ?? '', logoUrl: s.logoUrl ?? '', searchUrl: (s as any).searchUrl ?? '', country: s.country, sortOrder: String(s.sortOrder) });
     setShowModal(true);
   };
   const closeModal = () => { setShowModal(false); setEditStore(null); setForm(EMPTY_FORM); };
@@ -200,6 +200,12 @@ export default function AdminStores() {
             <input type="text" value={form.domain} onChange={(e) => handleDomainChange(e.target.value)}
               className="input" placeholder="bestbuy.com" />
             <p className="text-caption2 text-dark-label3 mt-1">Logo will be auto-fetched from this domain</p>
+          </div>
+          <div>
+            <label className="block text-footnote font-semibold text-dark-label2 mb-2">Search URL Template</label>
+            <input type="url" value={form.searchUrl} onChange={(e) => setForm(f => ({ ...f, searchUrl: e.target.value }))}
+              className="input" placeholder="https://www.bestbuy.com/site/searchpage.jsp?st={query}" />
+            <p className="text-caption2 text-dark-label3 mt-1">Use <code className="bg-dark-surface3 px-1 rounded">{'{query}'}</code> where the search term goes. Leave blank to use the built-in default.</p>
           </div>
           <div>
             <label className="block text-footnote font-semibold text-dark-label2 mb-2">Logo URL</label>

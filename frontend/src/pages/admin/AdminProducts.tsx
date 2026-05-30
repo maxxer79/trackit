@@ -42,6 +42,7 @@ export default function AdminProducts() {
   const [storeForm, setStoreForm] = useState<StoreForm>({ storeId: '', url: '', price: '' });
   const [fetchingImage, setFetchingImage] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [scrapingId, setScrapingId] = useState<string | null>(null);
 
   const handleFetchImage = async () => {
     const urlToFetch = imageUrlInput || form.imageUrl;
@@ -102,6 +103,7 @@ export default function AdminProducts() {
       return data;
     },
     onSuccess: (data: any) => {
+      setScrapingId(null);
       qc.invalidateQueries({ queryKey: ['admin-products'] });
       if (!data.results || data.results.length === 0) {
         toast.error(data.message ?? 'No store links found — add stores first');
@@ -115,7 +117,7 @@ export default function AdminProducts() {
         { duration: 5000 }
       );
     },
-    onError: () => toast.error('Scrape failed'),
+    onError: () => { setScrapingId(null); toast.error('Scrape failed'); },
   });
 
   // Stores
@@ -241,9 +243,8 @@ export default function AdminProducts() {
       ) : (
         <div className="card divide-y divide-dark-separator">
           {data?.data.map((p, i) => {
-            const bestStatus: StockStatus = (p.stockStatuses as any)?.find((s: any) => s.status === 'IN_STOCK')?.status
-              ?? (p.stockStatuses as any)?.find((s: any) => s.status === 'LIMITED')?.status
-              ?? 'OUT_OF_STOCK';
+            const storeListings = (p as any).storeListings ?? [];
+            const bestStatus: StockStatus = storeListings.some((s: any) => s.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK';
 
             return (
               <motion.div
@@ -296,13 +297,13 @@ export default function AdminProducts() {
                     </svg>
                   </button>
                   <button
-                    onClick={() => triggerScrape.mutate(p.id)}
-                    disabled={triggerScrape.isPending}
+                    onClick={() => { setScrapingId(p.id); triggerScrape.mutate(p.id); }}
+                    disabled={scrapingId === p.id}
                     className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-green hover:bg-apple-green/10 disabled:opacity-50"
                     title="Check stock at all stores"
                   >
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-                      className={triggerScrape.isPending ? 'animate-spin' : ''}>
+                      className={scrapingId === p.id ? 'animate-spin' : ''}>
                       <path d="M12 7A5 5 0 1 1 7 2"/>
                       <path d="M12 2v3h-3"/>
                     </svg>

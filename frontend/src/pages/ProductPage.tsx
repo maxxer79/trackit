@@ -254,14 +254,36 @@ export default function ProductPage() {
             </div>
           : filteredStatuses.map((s: any, i: number) => {
             const isInStock = s.status === 'IN_STOCK' || s.status === 'LIMITED';
+            // Direct product URL takes priority; fall back to retailer search
+            const searchHref = s.storeSearchUrl
+              ? s.storeSearchUrl.replace('{query}', encodeURIComponent(product.name))
+              : null;
+            const linkHref = s.productUrl || searchHref;
+            const isSearchLink = !s.productUrl && !!searchHref;
+
             return (
-              <motion.a key={s.storeId ?? i} href={s.productUrl ?? '#'} target="_blank" rel="noopener noreferrer"
-                className={clsx('flex items-center gap-3 px-4 py-3.5 transition-colors', s.productUrl ? 'hover:bg-dark-surface2' : 'cursor-default')}
+              <motion.a
+                key={s.storeId ?? i}
+                href={linkHref ?? '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={clsx('flex items-center gap-3 px-4 py-3.5 transition-colors group', linkHref ? 'hover:bg-dark-surface2' : 'cursor-default')}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
-                onClick={!s.productUrl ? (e) => e.preventDefault() : undefined}>
+                onClick={!linkHref ? (e) => e.preventDefault() : undefined}
+              >
                 <StoreLogo logoUrl={s.storeLogo} domain={s.storeSlug ? `${s.storeSlug}.com` : null} name={s.storeName ?? ''} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-subhead font-semibold text-white">{s.storeName}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-subhead font-semibold text-white">{s.storeName}</p>
+                    {isSearchLink && (
+                      <span className="text-caption2 text-dark-label3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                        <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="6" cy="6" r="4"/><path d="M13 13l-3-3"/>
+                        </svg>
+                        search
+                      </span>
+                    )}
+                  </div>
                   {s.price && <p className="text-caption1 text-apple-blue font-semibold">${s.price.toFixed(2)}</p>}
                   {s.lastCheckedAt && (
                     <p className="text-caption2 text-dark-label3">
@@ -269,9 +291,15 @@ export default function ProductPage() {
                     </p>
                   )}
                 </div>
-                <div className={clsx('px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[120px] text-center',
-                  isInStock ? 'bg-apple-green text-white' : 'border border-dark-separator text-dark-label2')}>
-                  {isInStock ? 'IN STOCK' : 'OUT OF STOCK'}
+                <div className={clsx(
+                  'px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[120px] text-center transition-colors',
+                  isInStock
+                    ? 'bg-apple-green text-white'
+                    : isSearchLink
+                      ? 'border border-dark-separator text-dark-label2 group-hover:border-apple-blue/50 group-hover:text-apple-blue'
+                      : 'border border-dark-separator text-dark-label2'
+                )}>
+                  {isInStock ? 'IN STOCK' : isSearchLink ? 'SEARCH →' : 'OUT OF STOCK'}
                 </div>
               </motion.a>
             );

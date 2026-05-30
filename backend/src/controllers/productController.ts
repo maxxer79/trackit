@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
+import { STORE_SEARCH_URLS } from '../data/searchUrls';
 
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -49,6 +50,7 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
         price: sl.price,
         productUrl: sl.url,
         lastCheckedAt: sl.lastChecked,
+        storeSearchUrl: sl.store?.searchUrl ?? STORE_SEARCH_URLS[sl.store?.slug] ?? null,
       })) ?? [],
       bestStatus: p.storeListings?.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',
       lowestPrice: p.storeListings?.filter((sl: any) => sl.inStock && sl.price).map((sl: any) => sl.price).sort((a: number, b: number) => a - b)[0] ?? null,
@@ -93,6 +95,7 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
         productUrl: sl.url,
         lastCheckedAt: sl.lastChecked,
         storeProductId: sl.id,
+        storeSearchUrl: sl.store?.searchUrl ?? STORE_SEARCH_URLS[sl.store?.slug] ?? null,
       })),
       bestStatus: product.storeListings.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',
       lowestPrice: product.storeListings.filter((sl: any) => sl.inStock && sl.price).map((sl: any) => sl.price).sort((a: number, b: number) => a - b)[0] ?? null,

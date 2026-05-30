@@ -129,14 +129,17 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
-    const where: any = {};
+    const where: any = { isActive: true };
     if (search) where.name = { contains: search as string, mode: 'insensitive' };
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where, skip, take: limitNum,
         orderBy: { createdAt: 'desc' },
-        include: { _count: { select: { trackings: { where: { isActive: true } } } } },
+        include: {
+          _count: { select: { trackings: { where: { isActive: true } } } },
+          storeListings: { select: { inStock: true } },
+        },
       }),
       prisma.product.count({ where }),
     ]);
@@ -277,13 +280,14 @@ export const getAdminStores = async (_req: Request, res: Response): Promise<void
 
 export const createAdminStore = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, slug, domain, logoUrl, country, sortOrder } = req.body;
+    const { name, slug, domain, logoUrl, searchUrl, country, sortOrder } = req.body;
     if (!name || !slug) { res.status(400).json({ error: 'Name and slug are required' }); return; }
     const store = await prisma.store.create({
       data: {
         name, slug,
         domain: domain || null,
         logoUrl: logoUrl || (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : null),
+        searchUrl: searchUrl || null,
         country: country || 'us',
         sortOrder: sortOrder ? parseInt(sortOrder) : 99,
         isActive: true,
@@ -299,7 +303,7 @@ export const createAdminStore = async (req: Request, res: Response): Promise<voi
 export const updateAdminStore = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, slug, domain, logoUrl, country, sortOrder, isActive } = req.body;
+    const { name, slug, domain, logoUrl, searchUrl, country, sortOrder, isActive } = req.body;
     const store = await prisma.store.update({
       where: { id },
       data: {
@@ -307,6 +311,7 @@ export const updateAdminStore = async (req: Request, res: Response): Promise<voi
         ...(slug && { slug }),
         ...(domain !== undefined && { domain }),
         ...(logoUrl !== undefined && { logoUrl }),
+        ...(searchUrl !== undefined && { searchUrl: searchUrl || null }),
         ...(country && { country }),
         ...(sortOrder !== undefined && { sortOrder: parseInt(sortOrder) }),
         ...(isActive !== undefined && { isActive }),
