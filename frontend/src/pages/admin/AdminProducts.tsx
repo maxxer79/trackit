@@ -8,6 +8,7 @@ import Modal from '../../components/ui/Modal';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { StockStatus } from '../../types';
 import toast from 'react-hot-toast';
+import StoreLogo from '../../components/ui/StoreLogo';
 
 interface ProductForm {
   name: string;
@@ -39,6 +40,23 @@ export default function AdminProducts() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [storeProduct, setStoreProduct] = useState<Product | null>(null);
   const [storeForm, setStoreForm] = useState<StoreForm>({ storeId: '', url: '', price: '' });
+  const [fetchingImage, setFetchingImage] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+
+  const handleFetchImage = async () => {
+    const urlToFetch = imageUrlInput || form.imageUrl;
+    if (!urlToFetch) { toast.error('Enter a store URL or image URL to fetch from'); return; }
+    setFetchingImage(true);
+    try {
+      const { data } = await api.get('/admin/fetch-image', { params: { url: urlToFetch } });
+      setForm(f => ({ ...f, imageUrl: data.imageUrl }));
+      toast.success('Image found!');
+    } catch {
+      toast.error('No image found at that URL. Try a different store link.');
+    } finally {
+      setFetchingImage(false);
+    }
+  };
 
   const { data, isLoading } = useQuery<{ data: Product[]; total: number; totalPages: number }>({
     queryKey: ['admin-products', search, page],
@@ -349,13 +367,47 @@ export default function AdminProducts() {
           </div>
           <div>
             <label className="block text-footnote font-semibold text-dark-label2 mb-2">Image URL</label>
-            <input
-              type="url"
-              value={form.imageUrl}
-              onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-              className="input"
-              placeholder="https://…"
-            />
+            <div className="flex gap-2 mb-2">
+              <input
+                type="url"
+                value={form.imageUrl}
+                onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+                className="input flex-1"
+                placeholder="https://… (paste URL or let us fetch it)"
+              />
+              {form.imageUrl && (
+                <img src={form.imageUrl} alt="preview"
+                  onError={(e) => (e.currentTarget.style.display = 'none')}
+                  className="w-10 h-10 rounded-apple object-contain bg-dark-surface2 border border-dark-separator shrink-0" />
+              )}
+            </div>
+            <div className="flex gap-2 items-center">
+              <input
+                type="url"
+                value={imageUrlInput}
+                onChange={(e) => setImageUrlInput(e.target.value)}
+                className="input flex-1 text-sm"
+                placeholder="Paste a store product URL to auto-fetch image…"
+              />
+              <button
+                type="button"
+                onClick={handleFetchImage}
+                disabled={fetchingImage}
+                className="btn-secondary px-3 py-2 text-caption1 shrink-0 flex items-center gap-1.5 hover:text-apple-blue hover:border-apple-blue/50"
+              >
+                {fetchingImage ? (
+                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.37 0 0 5.37 0 12h4z"/>
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="7" cy="7" r="5"/><path d="M7 4v3l2 1"/>
+                  </svg>
+                )}
+                {fetchingImage ? 'Fetching…' : 'Fetch Image'}
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <div>

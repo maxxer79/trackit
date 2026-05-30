@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth';
-import { getDashboardStats, getUsers, createAdminUser, updateUser, deleteUser, getAdminProducts, createProduct, updateProduct, deleteProduct, scrapeProduct, scrapeAll, addStoreProduct, getAdminStores, createAdminStore, updateAdminStore, deleteAdminStore } from '../controllers/adminController';
+import { getDashboardStats, getUsers, createAdminUser, updateUser, deleteUser, getAdminProducts, createProduct, updateProduct, deleteProduct, scrapeProduct, scrapeAll, fetchImage, addStoreProduct, getAdminStores, createAdminStore, updateAdminStore, deleteAdminStore } from '../controllers/adminController';
 
 const router = Router();
 router.use(authenticate, requireAdmin);
@@ -16,6 +16,7 @@ router.patch('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 router.post('/products/:id/scrape', scrapeProduct);
 router.post('/scrape-all', scrapeAll);
+router.get('/fetch-image', fetchImage);
 router.post('/store-products', addStoreProduct);
 router.get('/stores', getAdminStores);
 router.post('/stores', createAdminStore);

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
-import { checkStockForProduct, runStockCheck } from '../services/stockChecker';
+import { checkStockForProduct, runStockCheck, fetchProductImage } from '../services/stockChecker';
 import logger from '../utils/logger';
 
 export const getDashboardStats = async (_req: Request, res: Response): Promise<void> => {
@@ -185,6 +185,18 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     logger.error('DeleteProduct error', error);
     res.status(500).json({ error: 'Failed to delete product' });
+  }
+};
+
+export const fetchImage = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { url } = req.query;
+    if (!url) { res.status(400).json({ error: 'url is required' }); return; }
+    const imageUrl = await fetchProductImage(url as string);
+    if (!imageUrl) { res.status(404).json({ error: 'No image found at this URL' }); return; }
+    res.json({ imageUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch image' });
   }
 };
 
