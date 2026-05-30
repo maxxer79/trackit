@@ -134,6 +134,13 @@ export default function AdminProducts() {
     onError: () => toast.error('Failed to remove store link'),
   });
 
+  const setStockManual = useMutation({
+    mutationFn: async ({ id, inStock }: { id: string; inStock: boolean }) =>
+      api.patch(`/admin/store-products/${id}/stock`, { inStock }),
+    onSuccess: () => { refetchStoreListings(); toast.success('Stock status updated'); },
+    onError: () => toast.error('Failed to update stock'),
+  });
+
   const openCreate = () => {
     setEditProduct(null);
     setForm(EMPTY_FORM);
@@ -447,20 +454,42 @@ export default function AdminProducts() {
               <p className="text-footnote font-semibold text-dark-label2 mb-2">Current Stores</p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {productStoreListings.map((s: any) => (
-                  <div key={s.storeId} className="flex items-center justify-between gap-3 px-3 py-2 rounded-apple bg-dark-surface2">
+                  <div key={s.storeId ?? s.storeName} className="flex items-center gap-3 px-3 py-2.5 rounded-apple bg-dark-surface2">
+                    <StoreLogo logoUrl={s.storeLogo} domain={s.storeSlug ? `${s.storeSlug}.com` : null} name={s.storeName ?? ''} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="text-footnote font-semibold text-white">{s.storeName}</p>
-                      <p className="text-caption2 text-dark-label3 truncate">{s.productUrl}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-caption2 font-semibold ${s.status === 'IN_STOCK' ? 'text-apple-green' : 'text-dark-label3'}`}>
-                        {s.status === 'IN_STOCK' ? '● In Stock' : '○ Out'}
-                      </span>
-                      {s.storeProductId && (
-                        <button onClick={() => removeStoreListing.mutate(s.storeProductId)}
-                          className="text-caption2 text-apple-red hover:underline">Remove</button>
+                      {s.productUrl && (
+                        <a href={s.productUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-caption2 text-apple-blue hover:underline truncate block">
+                          {s.productUrl.length > 40 ? s.productUrl.substring(0, 40) + '…' : s.productUrl}
+                        </a>
                       )}
                     </div>
+                    {s.storeProductId && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Manual stock toggle */}
+                        <button
+                          onClick={() => setStockManual.mutate({ id: s.storeProductId, inStock: s.status !== 'IN_STOCK' })}
+                          className={`text-caption2 font-semibold px-2 py-1 rounded-apple transition-colors ${
+                            s.status === 'IN_STOCK'
+                              ? 'bg-apple-green/15 text-apple-green hover:bg-apple-red/15 hover:text-apple-red'
+                              : 'bg-dark-surface3 text-dark-label3 hover:bg-apple-green/15 hover:text-apple-green'
+                          }`}
+                          title="Click to toggle stock status"
+                        >
+                          {s.status === 'IN_STOCK' ? '● In Stock' : '○ Out of Stock'}
+                        </button>
+                        <button
+                          onClick={() => removeStoreListing.mutate(s.storeProductId)}
+                          className="btn-icon w-7 h-7 text-dark-label3 hover:text-apple-red hover:bg-apple-red/10"
+                          title="Remove store link"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <path d="M2 3.5h10M5 3.5V2.5h4v1M3.5 3.5l.5 8h6l.5-8"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

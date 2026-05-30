@@ -15,6 +15,19 @@ router.post('/products', createProduct);
 router.patch('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 router.post('/products/:id/scrape', scrapeProduct);
+router.patch('/store-products/:id/stock', async (req, res) => {
+  try {
+    const { prisma } = await import('../config/database');
+    const { inStock } = req.body;
+    const sp = await prisma.storeProduct.update({
+      where: { id: req.params.id },
+      data: { inStock: Boolean(inStock), lastChecked: new Date() },
+    });
+    res.json(sp);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update stock' });
+  }
+});
 router.post('/scrape-all', scrapeAll);
 router.get('/fetch-image', fetchImage);
 router.post('/store-products', addStoreProduct);

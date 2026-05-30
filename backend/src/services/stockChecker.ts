@@ -5,48 +5,116 @@ import { prisma } from '../config/database';
 import { sendNotificationToUser } from './notificationService';
 import logger from '../utils/logger';
 
-// User agents to rotate and avoid bot detection
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
 ];
 
-function randomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+function randomUA() { return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]; }
+
+function getDomain(url: string): string {
+  try { return new URL(url).hostname.replace('www.', ''); } catch { return ''; }
 }
 
-// Patterns that indicate IN STOCK
-const IN_STOCK_PATTERNS = [
-  /"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i,
-  /"availability"\s*:\s*"InStock"/i,
-  /itemAvailability.*?InStock/i,
-  /inStock.*?true/i,
-  /"inStock"\s*:\s*true/i,
-  /add to cart/i,
-  /add to bag/i,
-  /buy now/i,
-  /in stock/i,
-  /ships? (today|tomorrow|in \d)/i,
-  /ready to ship/i,
-  /available for purchase/i,
-];
+// ── Retailer-specific checkers ──────────────────────────────────────────────
 
-// Patterns that indicate OUT OF STOCK
-const OUT_OF_STOCK_PATTERNS = [
-  /"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i,
-  /"availability"\s*:\s*"OutOfStock"/i,
-  /out of stock/i,
-  /sold out/i,
-  /currently unavailable/i,
-  /temporarily out of stock/i,
-  /not available/i,
-  /notify me when available/i,
-  /"inStock"\s*:\s*false/i,
-  /join waitlist/i,
-];
+async function checkBestBuy(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    // Extract SKU from URL like /site/product-name/1234567.p
+    const skuMatch = url.match(/\/(\d{7,8})\.p/);
+    if (skuMatch) {
+      const sku = skuMatch[1];
+      const { data } = await axios.get(
+        `https://www.bestbuy.com/api/3.0/priceBlocks?skuId=${sku}`,
+        { timeout: 10000, headers: { 'User-Agent': randomUA(), 'Referer': 'https://www.bestbuy.com' } }
+      );
+      const block = Array.isArray(data) ? data[0] : data;
+      const buttonState = block?.priceBlock?.priceDomain?.buttonState?.buttonState ?? '';
+      if (buttonState === 'ADD_TO_CART' || buttonState === 'PRE_ORDER') return 'IN_STOCK';
+      if (buttonState === 'SOLD_OUT' || buttonState === 'COMING_SOON') return 'OUT_OF_STOCK';
+    }
+    // Fallback: fetch the page
+    return await checkGeneric(url);
+  } catch {
+    return await checkGeneric(url);
+  }
+}
 
-async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+async function checkWalmart(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: {
+        'User-Agent': randomUA(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+    });
+    if (/\"availabilityStatus\"\s*:\s*\"IN_STOCK\"/i.test(data)) return 'IN_STOCK';
+    if (/\"availabilityStatus\"\s*:\s*\"OUT_OF_STOCK\"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/add to cart/i.test(data)) return 'IN_STOCK';
+    if (/out of stock/i.test(data) || /sold out/i.test(data)) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkTarget(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    // Try Target's internal store API
+    const tcinMatch = url.match(/A-(\d+)/);
+    if (tcinMatch) {
+      const tcin = tcinMatch[1];
+      const { data } = await axios.get(
+        `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1?tcin=${tcin}&store_id=911&zip=10001&state=NY&latitude=40.711&longitude=-74.006&country=USA&channel=WEB&page=/p/${tcin}`,
+        { timeout: 10000, headers: { 'User-Agent': randomUA() } }
+      );
+      const avail = data?.data?.product?.available_to_promise_network?.availability;
+      if (avail === 'IN_STOCK' || avail === 'LIMITED_STOCK') return 'IN_STOCK';
+      if (avail === 'OUT_OF_STOCK') return 'OUT_OF_STOCK';
+    }
+    return await checkGeneric(url);
+  } catch {
+    return await checkGeneric(url);
+  }
+}
+
+async function checkNintendo(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    // Nintendo embeds availability in JSON-LD or window data
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"availability"\s*:\s*"InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/add to cart/i.test(data) || /"purchasable"\s*:\s*true/i.test(data)) return 'IN_STOCK';
+    if (/out of stock/i.test(data) || /sold out/i.test(data)) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkNewegg(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA() },
+    });
+    if (/\"inStock\"\s*:\s*true/i.test(data) || /Add to Cart<\/button>/i.test(data)) return 'IN_STOCK';
+    if (/\"inStock\"\s*:\s*false/i.test(data) || /Out of Stock/i.test(data)) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
     const response = await axios.get(url, {
       timeout: 12000,
@@ -54,10 +122,6 @@ async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNK
         'User-Agent': randomUA(),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0',
       },
       maxRedirects: 5,
@@ -65,25 +129,53 @@ async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNK
 
     const html: string = response.data;
 
-    // Check out-of-stock first (higher priority)
-    for (const pattern of OUT_OF_STOCK_PATTERNS) {
-      if (pattern.test(html)) {
-        return 'OUT_OF_STOCK';
-      }
+    // JSON-LD schema (most reliable)
+    const jsonLdMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) ?? [];
+    for (const block of jsonLdMatches) {
+      if (/InStock/i.test(block)) return 'IN_STOCK';
+      if (/OutOfStock/i.test(block)) return 'OUT_OF_STOCK';
     }
 
-    // Check in-stock
-    for (const pattern of IN_STOCK_PATTERNS) {
-      if (pattern.test(html)) {
-        return 'IN_STOCK';
-      }
-    }
+    // Common JS data patterns
+    if (/"availability"\s*:\s*"InStock"/i.test(html)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"OutOfStock"/i.test(html)) return 'OUT_OF_STOCK';
+    if (/"inStock"\s*:\s*true/i.test(html)) return 'IN_STOCK';
+    if (/"inStock"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
+    if (/"purchasable"\s*:\s*true/i.test(html)) return 'IN_STOCK';
+    if (/"purchasable"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
+
+    // Out of stock checks (before in-stock — more conservative)
+    const $ = cheerio.load(html);
+    const bodyText = $('body').text();
+    if (/out of stock/i.test(bodyText)) return 'OUT_OF_STOCK';
+    if (/sold out/i.test(bodyText)) return 'OUT_OF_STOCK';
+    if (/currently unavailable/i.test(bodyText)) return 'OUT_OF_STOCK';
+    if (/temporarily out of stock/i.test(bodyText)) return 'OUT_OF_STOCK';
+    if (/notify me when available/i.test(bodyText)) return 'OUT_OF_STOCK';
+
+    // In-stock checks
+    if (/add to cart/i.test(bodyText)) return 'IN_STOCK';
+    if (/add to bag/i.test(bodyText)) return 'IN_STOCK';
+    if (/buy now/i.test(bodyText)) return 'IN_STOCK';
+    if (/in stock/i.test(bodyText)) return 'IN_STOCK';
 
     return 'UNKNOWN';
   } catch (err: any) {
-    logger.warn(`checkUrl failed for ${url}: ${err.message}`);
+    logger.warn(`checkGeneric failed for ${url}: ${err.message}`);
     return 'UNKNOWN';
   }
+}
+
+async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  const domain = getDomain(url);
+
+  if (domain.includes('bestbuy.com')) return checkBestBuy(url);
+  if (domain.includes('walmart.com')) return checkWalmart(url);
+  if (domain.includes('target.com')) return checkTarget(url);
+  if (domain.includes('nintendo.com')) return checkNintendo(url);
+  if (domain.includes('newegg.com')) return checkNewegg(url);
+
+  return checkGeneric(url);
 }
 
 export async function fetchProductImage(url: string): Promise<string | null> {
@@ -95,22 +187,19 @@ export async function fetchProductImage(url: string): Promise<string | null> {
     });
     const $ = cheerio.load(response.data);
 
-    // Try og:image first (most reliable)
     const ogImage = $('meta[property="og:image"]').attr('content') ||
-                    $('meta[name="og:image"]').attr('content') ||
+                    $('meta[name="twitter:image"]').attr('content') ||
                     $('meta[property="twitter:image"]').attr('content');
-
     if (ogImage) return ogImage;
 
-    // Try common product image selectors
     const selectors = [
-      '#landingImage',           // Amazon
+      '#landingImage', '#imgBlkFront',    // Amazon
       '.primary-image img',
       '#main-product-image img',
       '.product-image img',
-      '[data-main-image]',
       'img[itemprop="image"]',
       '.product__image img',
+      '[data-testid="primary-image"] img',
     ];
 
     for (const sel of selectors) {
@@ -130,33 +219,29 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
       where: { id: storeProductId },
       include: { product: true, store: true },
     });
-    if (!sp) return;
+    if (!sp || !sp.url) return;
 
     const wasInStock = sp.inStock;
-    let nowInStock: boolean;
+    const status = await checkUrl(sp.url);
 
-    if (sp.url) {
-      const status = await checkUrl(sp.url);
-      if (status === 'UNKNOWN') {
-        // Don't change what we don't know — just update lastChecked
-        await prisma.storeProduct.update({
-          where: { id: storeProductId },
-          data: { lastChecked: new Date(), checkCount: { increment: 1 } },
-        });
-        return;
-      }
-      nowInStock = status === 'IN_STOCK';
-    } else {
-      // No URL to check — skip
+    logger.info(`Stock check ${sp.store.name} / ${sp.product.name}: ${status}`);
+
+    if (status === 'UNKNOWN') {
+      // Update lastChecked but don't change stock status
+      await prisma.storeProduct.update({
+        where: { id: storeProductId },
+        data: { lastChecked: new Date(), checkCount: { increment: 1 } },
+      });
       return;
     }
+
+    const nowInStock = status === 'IN_STOCK';
 
     await prisma.storeProduct.update({
       where: { id: storeProductId },
       data: { inStock: nowInStock, lastChecked: new Date(), checkCount: { increment: 1 } },
     });
 
-    // Log stock status change
     if (wasInStock !== nowInStock) {
       await (prisma as any).stockEvent.create({
         data: {
@@ -172,13 +257,11 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
       });
     }
 
-    // If stock just came back in, notify all trackers
     if (!wasInStock && nowInStock) {
       const trackings = await prisma.tracking.findMany({
         where: { productId: sp.productId, isActive: true },
         include: { user: true },
       });
-
       for (const tracking of trackings) {
         await sendNotificationToUser({
           userId: tracking.userId,
@@ -190,7 +273,6 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
           type: 'IN_STOCK',
         });
       }
-
       logger.info(`Stock alert sent for ${sp.product.name} at ${sp.store.name}`);
     }
   } catch (error) {
@@ -201,25 +283,17 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
 export const runStockCheck = async (): Promise<void> => {
   try {
     const storeProducts = await prisma.storeProduct.findMany({
-      where: {
-        product: { isActive: true },
-        store: { isActive: true },
-        isActive: true,
-      },
+      where: { product: { isActive: true }, store: { isActive: true }, isActive: true },
       select: { id: true },
     });
 
     logger.info(`Running stock check for ${storeProducts.length} listings`);
 
-    // Check in batches of 5 with delay to avoid overwhelming targets
     for (let i = 0; i < storeProducts.length; i += 5) {
       const batch = storeProducts.slice(i, i + 5);
       await Promise.allSettled(batch.map(sp => checkStockForProduct(sp.id)));
-      if (i + 5 < storeProducts.length) {
-        await new Promise(r => setTimeout(r, 2000));
-      }
+      if (i + 5 < storeProducts.length) await new Promise(r => setTimeout(r, 2000));
     }
-
     logger.info('Stock check complete');
   } catch (error) {
     logger.error('Run stock check error', error);
@@ -227,14 +301,10 @@ export const runStockCheck = async (): Promise<void> => {
 };
 
 export const startStockChecker = (): void => {
-  // Run every 15 minutes
   cron.schedule('*/15 * * * *', async () => {
     logger.info('Stock checker triggered');
     await runStockCheck();
   });
-
-  // Run after 30s delay on startup
   setTimeout(runStockCheck, 30000);
-
   logger.info('Stock checker started (every 15 minutes)');
 };
