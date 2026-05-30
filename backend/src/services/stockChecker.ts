@@ -21,23 +21,32 @@ function getDomain(url: string): string {
 
 async function checkBestBuy(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
-    // Extract SKU from URL like /site/product-name/1234567.p
     const skuMatch = url.match(/\/(\d{7,8})\.p/);
     if (skuMatch) {
       const sku = skuMatch[1];
-      const { data } = await axios.get(
-        `https://www.bestbuy.com/api/3.0/priceBlocks?skuId=${sku}`,
-        { timeout: 10000, headers: { 'User-Agent': randomUA(), 'Referer': 'https://www.bestbuy.com' } }
-      );
-      const block = Array.isArray(data) ? data[0] : data;
-      const buttonState = block?.priceBlock?.priceDomain?.buttonState?.buttonState ?? '';
-      if (buttonState === 'ADD_TO_CART' || buttonState === 'PRE_ORDER') return 'IN_STOCK';
-      if (buttonState === 'SOLD_OUT' || buttonState === 'COMING_SOON') return 'OUT_OF_STOCK';
+      try {
+        const { data } = await axios.get(
+          `https://www.bestbuy.com/api/3.0/priceBlocks?skus=${sku}`,  // correct param: skus not skuId
+          { timeout: 10000, headers: { 'User-Agent': randomUA(), 'Referer': 'https://www.bestbuy.com' } }
+        );
+        const block = Array.isArray(data) ? data[0] : data;
+        // Try both known response shapes
+        const buttonState =
+          block?.sku?.buttonState?.buttonState ??
+          block?.priceBlock?.priceDomain?.buttonState?.buttonState ?? '';
+        if (['ADD_TO_CART', 'PRE_ORDER', 'COMING_SOON_BUT_AVAILABLE'].includes(buttonState)) return 'IN_STOCK';
+        if (['SOLD_OUT', 'COMING_SOON', 'NOT_AVAILABLE'].includes(buttonState)) return 'OUT_OF_STOCK';
+        // Got a response but couldn't parse button state — don't guess
+        return 'UNKNOWN';
+      } catch {
+        // API failed — don't fall to generic HTML scrape (Best Buy blocks bots)
+        return 'UNKNOWN';
+      }
     }
-    // Fallback: fetch the page
+    // No SKU in URL — try generic cautiously
     return await checkGeneric(url);
   } catch {
-    return await checkGeneric(url);
+    return 'UNKNOWN';
   }
 }
 
@@ -114,6 +123,26 @@ async function checkNewegg(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | '
   }
 }
 
+async function checkDell(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    // Dell embeds structured data in the initial HTML — target that only
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"availability"\s*:\s*"InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"inStock"\s*:\s*true/i.test(data) || /"purchasable"\s*:\s*true/i.test(data)) return 'IN_STOCK';
+    if (/"inStock"\s*:\s*false/i.test(data) || /"purchasable"\s*:\s*false/i.test(data)) return 'OUT_OF_STOCK';
+    // Dell pages are JS-rendered; plain HTTP fetch won't get real stock data
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
 async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
     const response = await axios.get(url, {
@@ -144,21 +173,27 @@ async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 
     if (/"purchasable"\s*:\s*true/i.test(html)) return 'IN_STOCK';
     if (/"purchasable"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
 
-    // Out of stock checks (before in-stock — more conservative)
+    // Collect body text signals — check both before deciding
     const $ = cheerio.load(html);
     const bodyText = $('body').text();
-    if (/out of stock/i.test(bodyText)) return 'OUT_OF_STOCK';
-    if (/sold out/i.test(bodyText)) return 'OUT_OF_STOCK';
-    if (/currently unavailable/i.test(bodyText)) return 'OUT_OF_STOCK';
-    if (/temporarily out of stock/i.test(bodyText)) return 'OUT_OF_STOCK';
-    if (/notify me when available/i.test(bodyText)) return 'OUT_OF_STOCK';
 
-    // In-stock checks
-    if (/add to cart/i.test(bodyText)) return 'IN_STOCK';
-    if (/add to bag/i.test(bodyText)) return 'IN_STOCK';
-    if (/buy now/i.test(bodyText)) return 'IN_STOCK';
-    if (/in stock/i.test(bodyText)) return 'IN_STOCK';
+    const hasAddToCart = /add to cart/i.test(bodyText) || /add to bag/i.test(bodyText);
+    const hasBuyNow   = /buy now/i.test(bodyText);
+    const hasInStock  = /\bin stock\b/i.test(bodyText);
 
+    const hasOutOfStock   = /out of stock/i.test(bodyText);
+    const hasSoldOut      = /sold out/i.test(bodyText);
+    const hasUnavailable  = /currently unavailable/i.test(bodyText) || /temporarily out of stock/i.test(bodyText);
+    const hasNotifyMe     = /notify me when available/i.test(bodyText);
+
+    const inStockSignal  = hasAddToCart || hasBuyNow;
+    const outStockSignal = hasOutOfStock || hasSoldOut || hasUnavailable || hasNotifyMe;
+
+    // Add-to-cart is a strong DOM signal — if present, trust it over text mentions
+    if (inStockSignal && !outStockSignal) return 'IN_STOCK';
+    if (outStockSignal && !inStockSignal) return 'OUT_OF_STOCK';
+    if (hasInStock && !outStockSignal) return 'IN_STOCK';
+    // Conflicting signals (bot page, JS shell, mixed content) → preserve existing DB value
     return 'UNKNOWN';
   } catch (err: any) {
     logger.warn(`checkGeneric failed for ${url}: ${err.message}`);
@@ -174,6 +209,7 @@ async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNK
   if (domain.includes('target.com')) return checkTarget(url);
   if (domain.includes('nintendo.com')) return checkNintendo(url);
   if (domain.includes('newegg.com')) return checkNewegg(url);
+  if (domain.includes('dell.com')) return checkDell(url);
 
   return checkGeneric(url);
 }

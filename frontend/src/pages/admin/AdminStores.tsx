@@ -253,14 +253,17 @@ export default function AdminStores() {
       </Modal>
 
       {/* Delete confirm */}
-      <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} title="Deactivate Retailer">
+      <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} title="Delete Retailer">
         <div className="space-y-5">
-          <p className="text-subhead text-dark-label2">This will hide the retailer from all product pages. Existing store links won't be deleted.</p>
+          <p className="text-subhead text-dark-label2">
+            This will permanently delete this retailer and remove all product links associated with it.
+            This cannot be undone.
+          </p>
           <div className="flex gap-3">
             <button onClick={() => setDeleteId(null)} className="btn-secondary flex-1 py-3">Cancel</button>
             <button onClick={() => deleteId && deleteStore.mutate(deleteId)} disabled={deleteStore.isPending}
               className="btn-danger flex-1 py-3">
-              {deleteStore.isPending ? 'Deactivating…' : 'Deactivate'}
+              {deleteStore.isPending ? 'Deleting…' : 'Delete Retailer'}
             </button>
           </div>
         </div>

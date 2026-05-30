@@ -326,9 +326,12 @@ export const updateAdminStore = async (req: Request, res: Response): Promise<voi
 export const deleteAdminStore = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    await prisma.store.update({ where: { id }, data: { isActive: false } });
-    res.json({ message: 'Store deactivated' });
+    // Remove all store product links first to satisfy foreign key constraints
+    await prisma.storeProduct.deleteMany({ where: { storeId: id } });
+    await prisma.store.delete({ where: { id } });
+    res.json({ message: 'Store deleted' });
   } catch (error) {
+    logger.error('DeleteAdminStore error', error);
     res.status(500).json({ error: 'Failed to delete store' });
   }
 };
