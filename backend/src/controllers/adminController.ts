@@ -205,22 +205,61 @@ export const scrapeProduct = async (req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     const storeProducts = await prisma.storeProduct.findMany({
       where: { productId: id },
-      select: { id: true },
+      include: { store: true, product: true },
     });
-    // Run in background
-    Promise.allSettled(storeProducts.map(sp => checkStockForProduct(sp.id)));
-    res.json({ message: `Scrape queued for ${storeProducts.length} listings` });
+
+    if (storeProducts.length === 0) {
+      res.json({ message: 'No store links found for this product. Add store links first.', results: [] });
+      return;
+    }
+
+    // Run scrapes and collect results
+    const results: { store: string; url: string; status: string }[] = [];
+
+    for (const sp of storeProducts) {
+      const start = Date.now();
+      try {
+        await checkStockForProduct(sp.id);
+        // Re-fetch to get updated status
+        const updated = await prisma.storeProduct.findUnique({ where: { id: sp.id } });
+        const status = updated?.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK';
+        results.push({ store: sp.store.name, url: sp.url, status });
+
+        // Write to scraper log
+        await prisma.scraperLog.create({
+          data: {
+            storeSlug: sp.store.slug,
+            productSlug: sp.product.slug,
+            status,
+            message: `Checked ${sp.url} → ${status}`,
+            duration: Date.now() - start,
+          },
+        });
+      } catch (err: any) {
+        results.push({ store: sp.store.name, url: sp.url, status: 'ERROR' });
+        await prisma.scraperLog.create({
+          data: {
+            storeSlug: sp.store.slug,
+            productSlug: sp.product.slug,
+            status: 'ERROR',
+            message: err?.message ?? 'Unknown error',
+            duration: Date.now() - start,
+          },
+        });
+      }
+    }
+
+    res.json({ message: `Checked ${results.length} store(s)`, results });
   } catch (error) {
     logger.error('ScrapeProduct error', error);
-    res.status(500).json({ error: 'Failed to queue scrape' });
+    res.status(500).json({ error: 'Failed to scrape product' });
   }
 };
 
 export const scrapeAll = async (_req: Request, res: Response): Promise<void> => {
   try {
-    // Run in background, respond immediately
-    runStockCheck();
-    res.json({ message: 'Full stock check queued' });
+    runStockCheck(); // Run in background
+    res.json({ message: 'Full stock check started in background' });
   } catch (error) {
     logger.error('ScrapeAll error', error);
     res.status(500).json({ error: 'Failed to queue scrape' });

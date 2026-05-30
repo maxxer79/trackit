@@ -6,6 +6,24 @@ const router = Router();
 router.use(authenticate, requireAdmin);
 
 router.get('/stats', getDashboardStats);
+router.get('/logs', async (req, res) => {
+  try {
+    const { prisma } = await import('../config/database');
+    const page = parseInt((req.query.page as string) ?? '1');
+    const limit = parseInt((req.query.limit as string) ?? '50');
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      prisma.scraperLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip, take: limit,
+      }),
+      prisma.scraperLog.count(),
+    ]);
+    res.json({ data, total, totalPages: Math.ceil(total / limit) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
 router.get('/users', getUsers);
 router.post('/users', createAdminUser);
 router.patch('/users/:id', updateUser);

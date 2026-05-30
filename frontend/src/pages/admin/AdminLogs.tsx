@@ -23,8 +23,12 @@ interface LogsResponse {
 
 const STATUS_COLORS: Record<string, string> = {
   success: 'text-apple-green bg-apple-green/10 border-apple-green/20',
+  IN_STOCK: 'text-apple-green bg-apple-green/10 border-apple-green/20',
   error: 'text-apple-red bg-apple-red/10 border-apple-red/20',
+  ERROR: 'text-apple-red bg-apple-red/10 border-apple-red/20',
   blocked: 'text-apple-orange bg-apple-orange/10 border-apple-orange/20',
+  OUT_OF_STOCK: 'text-dark-label2 bg-dark-surface2 border-dark-separator',
+  UNKNOWN: 'text-apple-orange bg-apple-orange/10 border-apple-orange/20',
   skipped: 'text-dark-label2 bg-dark-surface2 border-dark-separator',
 };
 

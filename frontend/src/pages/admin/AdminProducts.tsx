@@ -97,9 +97,25 @@ export default function AdminProducts() {
   });
 
   const triggerScrape = useMutation({
-    mutationFn: async (id: string) => api.post(`/admin/products/${id}/scrape`),
-    onSuccess: () => toast.success('Scrape queued'),
-    onError: () => toast.error('Failed to queue scrape'),
+    mutationFn: async (id: string) => {
+      const { data } = await api.post(`/admin/products/${id}/scrape`);
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['admin-products'] });
+      if (!data.results || data.results.length === 0) {
+        toast.error(data.message ?? 'No store links found — add stores first');
+        return;
+      }
+      const inStock = data.results.filter((r: any) => r.status === 'IN_STOCK').length;
+      const out = data.results.filter((r: any) => r.status === 'OUT_OF_STOCK').length;
+      const unknown = data.results.filter((r: any) => r.status !== 'IN_STOCK' && r.status !== 'OUT_OF_STOCK').length;
+      toast.success(
+        `Checked ${data.results.length} store(s): ${inStock} in stock, ${out} out, ${unknown} unknown`,
+        { duration: 5000 }
+      );
+    },
+    onError: () => toast.error('Scrape failed'),
   });
 
   // Stores
@@ -281,10 +297,12 @@ export default function AdminProducts() {
                   </button>
                   <button
                     onClick={() => triggerScrape.mutate(p.id)}
-                    className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-green hover:bg-apple-green/10"
-                    title="Trigger scrape"
+                    disabled={triggerScrape.isPending}
+                    className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-green hover:bg-apple-green/10 disabled:opacity-50"
+                    title="Check stock at all stores"
                   >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                      className={triggerScrape.isPending ? 'animate-spin' : ''}>
                       <path d="M12 7A5 5 0 1 1 7 2"/>
                       <path d="M12 2v3h-3"/>
                     </svg>
