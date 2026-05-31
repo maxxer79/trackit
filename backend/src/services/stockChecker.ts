@@ -21,30 +21,39 @@ function getDomain(url: string): string {
 
 async function checkBestBuy(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
-    const skuMatch = url.match(/\/(\d{7,8})\.p/);
+    // SKU can be in the path (/1234567.p) or query string (?skuId=1234567)
+    const skuMatch = url.match(/\/(\d{7,8})\.p/) ?? url.match(/[?&]skuId=(\d+)/);
     if (skuMatch) {
       const sku = skuMatch[1];
       try {
         const { data } = await axios.get(
-          `https://www.bestbuy.com/api/3.0/priceBlocks?skus=${sku}`,  // correct param: skus not skuId
+          `https://www.bestbuy.com/api/3.0/priceBlocks?skus=${sku}`,
           { timeout: 10000, headers: { 'User-Agent': randomUA(), 'Referer': 'https://www.bestbuy.com' } }
         );
         const block = Array.isArray(data) ? data[0] : data;
-        // Try both known response shapes
         const buttonState =
           block?.sku?.buttonState?.buttonState ??
           block?.priceBlock?.priceDomain?.buttonState?.buttonState ?? '';
         if (['ADD_TO_CART', 'PRE_ORDER', 'COMING_SOON_BUT_AVAILABLE'].includes(buttonState)) return 'IN_STOCK';
         if (['SOLD_OUT', 'COMING_SOON', 'NOT_AVAILABLE'].includes(buttonState)) return 'OUT_OF_STOCK';
-        // Got a response but couldn't parse button state — don't guess
-        return 'UNKNOWN';
+        // API responded but button state unknown — try HTML fallback
       } catch {
-        // API failed — don't fall to generic HTML scrape (Best Buy blocks bots)
-        return 'UNKNOWN';
+        // API failed — try HTML fallback before giving up
       }
+      // HTML fallback: Best Buy does embed JSON-LD and buttonState in their SSR output
+      try {
+        const { data: html } = await axios.get(url, {
+          timeout: 12000,
+          headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.bestbuy.com' },
+        });
+        if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(html)) return 'IN_STOCK';
+        if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(html)) return 'OUT_OF_STOCK';
+        if (/"buttonState"\s*:\s*"ADD_TO_CART"/i.test(html)) return 'IN_STOCK';
+        if (/"buttonState"\s*:\s*"SOLD_OUT"/i.test(html)) return 'OUT_OF_STOCK';
+      } catch {}
+      return 'UNKNOWN';
     }
-    // No SKU in URL — try generic cautiously
-    return await checkGeneric(url);
+    return 'UNKNOWN';
   } catch {
     return 'UNKNOWN';
   }
@@ -117,6 +126,131 @@ async function checkNewegg(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | '
     });
     if (/\"inStock\"\s*:\s*true/i.test(data) || /Add to Cart<\/button>/i.test(data)) return 'IN_STOCK';
     if (/\"inStock\"\s*:\s*false/i.test(data) || /Out of Stock/i.test(data)) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkGameStop(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    // GameStop uses Next.js SSR — product data lives in __NEXT_DATA__
+    const nextMatch = data.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (nextMatch) {
+      try {
+        const nextData = JSON.parse(nextMatch[1]);
+        // Traverse common paths where GameStop stores availability
+        const pageProps = nextData?.props?.pageProps ?? {};
+        const product = pageProps?.productData?.product ?? pageProps?.product ?? pageProps?.initialData?.product;
+        if (product) {
+          const isAvailable = product?.availability?.isAvailable ?? product?.isAvailable ?? product?.inStock;
+          if (isAvailable === true) return 'IN_STOCK';
+          if (isAvailable === false) return 'OUT_OF_STOCK';
+        }
+      } catch {}
+    }
+    // JSON-LD fallback
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"availability"\s*:\s*"InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    // GameStop-specific button signals (requires no "notify me" to avoid false positives)
+    const hasAddToCart = /add to cart/i.test(data);
+    const hasNotifyMe = /notify me when available/i.test(data) || /notify me/i.test(data);
+    const hasSoldOut  = /sold out/i.test(data);
+    if (hasAddToCart && !hasNotifyMe && !hasSoldOut) return 'IN_STOCK';
+    if (hasNotifyMe || hasSoldOut) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkAbt(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    // ABT does SSR with JSON-LD structured data — most reliable signal
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"availability"\s*:\s*"InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"inStock"\s*:\s*true/i.test(data)) return 'IN_STOCK';
+    if (/"inStock"\s*:\s*false/i.test(data)) return 'OUT_OF_STOCK';
+    // ABT-specific button signals
+    const hasAddToCart = /id="addToCartBtn"/i.test(data) || /add to cart/i.test(data);
+    const hasNotifyMe  = /notify me/i.test(data) || /email me when available/i.test(data);
+    const hasOOS       = /out of stock/i.test(data) || /sold out/i.test(data);
+    if (hasAddToCart && !hasNotifyMe && !hasOOS) return 'IN_STOCK';
+    if (hasNotifyMe || (hasOOS && !hasAddToCart)) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkPlayStationDirect(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    // JSON-LD structured data
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
+    // PlayStation Direct embeds product state JSON in SSR output
+    if (/"inStock"\s*:\s*true/i.test(data)) return 'IN_STOCK';
+    if (/"inStock"\s*:\s*false/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"productStatus"\s*:\s*"SoldOut"/i.test(data) || /"status"\s*:\s*"SoldOut"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"productStatus"\s*:\s*"InStock"/i.test(data) || /"status"\s*:\s*"InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"purchasable"\s*:\s*true/i.test(data)) return 'IN_STOCK';
+    if (/"purchasable"\s*:\s*false/i.test(data)) return 'OUT_OF_STOCK';
+    // Button-level signals
+    const hasAddToCart = /add to cart/i.test(data);
+    const hasSoldOut   = /sold out/i.test(data);
+    const hasOOS       = /out of stock/i.test(data);
+    if (hasAddToCart && !hasSoldOut && !hasOOS) return 'IN_STOCK';
+    if ((hasSoldOut || hasOOS) && !hasAddToCart) return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+async function checkStockX(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    // StockX is a pure SPA — no useful content in HTML. Use their internal product API.
+    const urlKey = url.replace(/\?.*$/, '').replace(/\/$/, '').split('/').pop();
+    if (!urlKey || urlKey.includes('stockx.com')) return 'UNKNOWN';
+
+    const { data } = await axios.get(
+      `https://stockx.com/api/products/${urlKey}?includes=market&currency=USD`,
+      {
+        timeout: 10000,
+        headers: {
+          'User-Agent': randomUA(),
+          'Accept': 'application/json',
+          'x-requested-with': 'XMLHttpRequest',
+          'Referer': url,
+        },
+      }
+    );
+
+    const market = data?.Product?.market;
+    if (!market) return 'UNKNOWN';
+
+    const numberOfAsks = market.numberOfAsks ?? 0;
+    const lowestAsk    = market.lowestAsk ?? 0;
+
+    // On StockX, "in stock" means active seller listings exist
+    if (numberOfAsks > 0 || lowestAsk > 0) return 'IN_STOCK';
+    if (numberOfAsks === 0 && data?.Product) return 'OUT_OF_STOCK';
     return 'UNKNOWN';
   } catch {
     return 'UNKNOWN';
@@ -204,12 +338,16 @@ async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 
 async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   const domain = getDomain(url);
 
-  if (domain.includes('bestbuy.com')) return checkBestBuy(url);
-  if (domain.includes('walmart.com')) return checkWalmart(url);
-  if (domain.includes('target.com')) return checkTarget(url);
-  if (domain.includes('nintendo.com')) return checkNintendo(url);
-  if (domain.includes('newegg.com')) return checkNewegg(url);
-  if (domain.includes('dell.com')) return checkDell(url);
+  if (domain.includes('bestbuy.com'))           return checkBestBuy(url);
+  if (domain.includes('walmart.com'))           return checkWalmart(url);
+  if (domain.includes('target.com'))            return checkTarget(url);
+  if (domain.includes('nintendo.com'))          return checkNintendo(url);
+  if (domain.includes('newegg.com'))            return checkNewegg(url);
+  if (domain.includes('dell.com'))              return checkDell(url);
+  if (domain.includes('gamestop.com'))          return checkGameStop(url);
+  if (domain.includes('abt.com'))               return checkAbt(url);
+  if (domain.includes('direct.playstation.com') || domain.includes('playstation.com')) return checkPlayStationDirect(url);
+  if (domain.includes('stockx.com'))            return checkStockX(url);
 
   return checkGeneric(url);
 }
