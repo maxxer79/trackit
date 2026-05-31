@@ -55,7 +55,8 @@ async function checkViaSearch(
 
     // Manual stealth: override webdriver flag that sites detect
     await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Object.defineProperty((window as any).navigator, 'webdriver', { get: () => false });
     });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -67,33 +68,37 @@ async function checkViaSearch(
     // Wait for JS to render product cards
     await new Promise<void>(r => setTimeout(r, 3000));
 
-    // Evaluate runs in browser context — no TypeScript annotations allowed inside
+    // Evaluate runs in browser context — cast window to access DOM globals in Node TS
     const status = await page.evaluate((name: string) => {
-      const nameWords = name.toLowerCase().split(' ').filter(w => w.length > 3);
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const _document = (window as any).document as Document;
+      const nameWords = name.toLowerCase().split(' ').filter((w: string) => w.length > 3);
 
       const cardSelectors = [
         '[class*="product-item"]', '[class*="ProductCard"]', '[class*="product-card"]',
         'li[class*="product"]',    '[data-testid*="product"]', '[class*="search-result"]',
       ];
       for (const sel of cardSelectors) {
-        for (const card of Array.from(document.querySelectorAll(sel))) {
-          const cardText = (card.textContent || '').toLowerCase();
-          const matches = nameWords.filter(w => cardText.includes(w)).length;
+        for (const card of Array.from(_document.querySelectorAll(sel))) {
+          const cardEl = card as Element;
+          const cardText = (cardEl.textContent || '').toLowerCase();
+          const matches = nameWords.filter((w: string) => cardText.includes(w)).length;
           if (matches >= Math.min(2, nameWords.length)) {
-            const html = card.innerHTML.toLowerCase();
+            const html = cardEl.innerHTML.toLowerCase();
             if (/add[\s-]to[\s-]cart/i.test(html)) return 'IN_STOCK';
             if (/notify[\s-]me|sold[\s-]out|not[\s-]available/i.test(html)) return 'OUT_OF_STOCK';
           }
         }
       }
 
-      const body = document.body.innerText.toLowerCase();
+      const body = (_document.body as HTMLElement).innerText.toLowerCase();
       const hasAdd    = /add to cart/i.test(body);
       const hasNotify = /notify me when available/i.test(body);
       const hasSold   = /sold out/i.test(body);
       if (hasAdd && !hasNotify && !hasSold) return 'IN_STOCK';
       if ((hasNotify || hasSold) && !hasAdd) return 'OUT_OF_STOCK';
       return 'UNKNOWN';
+      /* eslint-enable @typescript-eslint/no-explicit-any */
     }, productName) as 'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN';
 
     logger.info(`Browser search result: ${storeSlug} "${productName}" → ${status}`);
