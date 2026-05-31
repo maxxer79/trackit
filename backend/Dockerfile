@@ -23,8 +23,19 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+# Install OpenSSL for Prisma + Chromium for headless browser scraping
+RUN apk add --no-cache \
+    openssl \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# Tell Puppeteer to use the system Chromium instead of downloading its own
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Install only production deps
 COPY package*.json ./

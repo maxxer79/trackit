@@ -295,11 +295,13 @@ export default function ProductPage() {
                   'px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[120px] text-center transition-colors',
                   isInStock
                     ? 'bg-apple-green text-white'
-                    : isSearchLink
-                      ? 'border border-dark-separator text-dark-label2 group-hover:border-apple-blue/50 group-hover:text-apple-blue'
-                      : 'border border-dark-separator text-dark-label2'
+                    : !s.lastCheckedAt
+                      ? 'border border-dark-separator text-dark-label3'
+                      : isSearchLink
+                        ? 'border border-dark-separator text-dark-label2 group-hover:border-apple-blue/50 group-hover:text-apple-blue'
+                        : 'border border-dark-separator text-dark-label2'
                 )}>
-                  {isInStock ? 'IN STOCK' : isSearchLink ? 'SEARCH →' : 'OUT OF STOCK'}
+                  {isInStock ? 'IN STOCK' : !s.lastCheckedAt ? 'NOT CHECKED' : isSearchLink ? 'SEARCH →' : 'OUT OF STOCK'}
                 </div>
               </motion.a>
             );

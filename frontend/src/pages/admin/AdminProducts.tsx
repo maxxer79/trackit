@@ -244,7 +244,10 @@ export default function AdminProducts() {
         <div className="card divide-y divide-dark-separator">
           {data?.data.map((p, i) => {
             const storeListings = (p as any).storeListings ?? [];
-            const bestStatus: StockStatus = storeListings.some((s: any) => s.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK';
+            const hasAnyChecked = storeListings.some((s: any) => s.lastChecked);
+            const bestStatus: StockStatus = storeListings.some((s: any) => s.inStock)
+              ? 'IN_STOCK'
+              : hasAnyChecked ? 'OUT_OF_STOCK' : 'UNKNOWN';
 
             return (
               <motion.div

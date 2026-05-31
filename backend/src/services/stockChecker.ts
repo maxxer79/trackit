@@ -5,6 +5,110 @@ import { prisma } from '../config/database';
 import { sendNotificationToUser } from './notificationService';
 import logger from '../utils/logger';
 
+// ── Browser search fallback ───────────────────────────────────────────────────
+// Used for retailers that block direct HTTP requests (GameStop, ABT, etc.)
+// Launches a real stealth Chromium browser, searches the store for the product
+// name, and checks if the first matching result is available to buy.
+
+let browserBusy = false; // prevent multiple simultaneous browser instances
+
+const BROWSER_SEARCH_URLS: Record<string, string> = {
+  gamestop: 'https://www.gamestop.com/search/?q={query}',
+  abt:      'https://www.abt.com/search/?q={query}',
+};
+
+async function checkViaSearch(
+  storeSlug: string,
+  productName: string
+): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  if (browserBusy) {
+    logger.info(`Browser busy — skipping search check for ${storeSlug}`);
+    return 'UNKNOWN';
+  }
+  const template = BROWSER_SEARCH_URLS[storeSlug];
+  if (!template) return 'UNKNOWN';
+
+  const searchUrl = template.replace('{query}', encodeURIComponent(productName));
+  browserBusy = true;
+  let browser: any;
+
+  try {
+    // Dynamic require avoids ESM/CJS issues at compile time
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const puppeteer = require('puppeteer-extra');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    puppeteer.use(StealthPlugin());
+
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--window-size=1280,800',
+      ],
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+
+    logger.info(`Browser search: ${storeSlug} → "${productName}" at ${searchUrl}`);
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // Give JS time to render product cards
+    await new Promise(r => setTimeout(r, 3000));
+
+    const status: string = await page.evaluate((name: string) => {
+      const nameWords = name.toLowerCase().split(' ').filter((w: string) => w.length > 3);
+
+      // Try to find a product card that matches our product name
+      const cardSelectors = [
+        '[class*="product-item"]', '[class*="ProductCard"]', '[class*="product-card"]',
+        'li[class*="product"]',   '[data-testid*="product"]',  '[class*="search-result"]',
+      ];
+      for (const sel of cardSelectors) {
+        const cards = Array.from(document.querySelectorAll(sel));
+        for (const card of cards) {
+          const cardText = (card.textContent || '').toLowerCase();
+          const matches = nameWords.filter((w: string) => cardText.includes(w)).length;
+          if (matches >= Math.min(2, nameWords.length)) {
+            const html = card.innerHTML.toLowerCase();
+            if (/add[\s-]to[\s-]cart/i.test(html)) return 'IN_STOCK';
+            if (/notify[\s-]me|sold[\s-]out|not[\s-]available/i.test(html)) return 'OUT_OF_STOCK';
+          }
+        }
+      }
+
+      // No card matched — fall back to page-level signals (conservative)
+      const body = document.body.innerText.toLowerCase();
+      const hasAdd    = /add to cart/i.test(body);
+      const hasNotify = /notify me when available/i.test(body);
+      const hasSold   = /sold out/i.test(body);
+      if (hasAdd && !hasNotify && !hasSold) return 'IN_STOCK';
+      if ((hasNotify || hasSold) && !hasAdd) return 'OUT_OF_STOCK';
+      return 'UNKNOWN';
+    }, productName);
+
+    logger.info(`Browser search result: ${storeSlug} "${productName}" → ${status}`);
+    return status as 'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN';
+
+  } catch (err: any) {
+    logger.warn(`Browser search failed for ${storeSlug}: ${err.message}`);
+    return 'UNKNOWN';
+  } finally {
+    browserBusy = false;
+    if (browser) { try { await browser.close(); } catch {} }
+  }
+}
+
+// ── HTTP helpers ─────────────────────────────────────────────────────────────
+
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -21,8 +125,13 @@ function getDomain(url: string): string {
 
 async function checkBestBuy(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
-    // SKU can be in the path (/1234567.p) or query string (?skuId=1234567)
-    const skuMatch = url.match(/\/(\d{7,8})\.p/) ?? url.match(/[?&]skuId=(\d+)/);
+    // SKU appears in multiple URL formats Best Buy uses:
+    //   /site/name/6601524.p          (standard)
+    //   ?skuId=6601524                 (query param)
+    //   /product/name/ID/sku/6601524   (ad/affiliate URLs)
+    const skuMatch = url.match(/\/(\d{7,8})\.p/)
+      ?? url.match(/[?&]skuId=(\d+)/)
+      ?? url.match(/\/sku\/(\d{5,8})(?:[/?#]|$)/);
     if (skuMatch) {
       const sku = skuMatch[1];
       try {
@@ -132,12 +241,16 @@ async function checkNewegg(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | '
   }
 }
 
-async function checkGameStop(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+async function checkGameStop(url: string, productName?: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
     const { data } = await axios.get(url, {
       timeout: 12000,
       headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
     });
+    // Empty response = bot-blocked — fall back to browser search
+    if (!data || data.length < 500) {
+      return productName ? checkViaSearch('gamestop', productName) : 'UNKNOWN';
+    }
     // GameStop uses Next.js SSR — product data lives in __NEXT_DATA__
     const nextMatch = data.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
     if (nextMatch) {
@@ -170,12 +283,16 @@ async function checkGameStop(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' |
   }
 }
 
-async function checkAbt(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+async function checkAbt(url: string, productName?: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
     const { data } = await axios.get(url, {
       timeout: 12000,
       headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
     });
+    // Empty response = bot-blocked — fall back to browser search
+    if (!data || data.length < 500) {
+      return productName ? checkViaSearch('abt', productName) : 'UNKNOWN';
+    }
     // ABT does SSR with JSON-LD structured data — most reliable signal
     if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
     if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
@@ -201,22 +318,37 @@ async function checkPlayStationDirect(url: string): Promise<'IN_STOCK' | 'OUT_OF
       timeout: 12000,
       headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
     });
+
+    // PlayStation Direct embeds CTA status in SSR JSON (most reliable)
+    // These ctaStatus values drive which button is displayed
+    if (/"ctaStatus"\s*:\s*"ADD_TO_CART"/i.test(data))          return 'IN_STOCK';
+    if (/"ctaStatus"\s*:\s*"SIGN_IN_TO_BUY"/i.test(data))       return 'IN_STOCK';
+    if (/"ctaStatus"\s*:\s*"LOW_STOCK"/i.test(data))            return 'IN_STOCK';
+    if (/"ctaStatus"\s*:\s*"CURRENTLY_UNAVAILABLE"/i.test(data)) return 'OUT_OF_STOCK';
+    if (/"ctaStatus"\s*:\s*"SOLD_OUT"/i.test(data))             return 'OUT_OF_STOCK';
+
     // JSON-LD structured data
     if (/"availability"\s*:\s*"https?:\/\/schema\.org\/InStock"/i.test(data)) return 'IN_STOCK';
     if (/"availability"\s*:\s*"https?:\/\/schema\.org\/OutOfStock"/i.test(data)) return 'OUT_OF_STOCK';
-    // PlayStation Direct embeds product state JSON in SSR output
-    if (/"inStock"\s*:\s*true/i.test(data)) return 'IN_STOCK';
-    if (/"inStock"\s*:\s*false/i.test(data)) return 'OUT_OF_STOCK';
-    if (/"productStatus"\s*:\s*"SoldOut"/i.test(data) || /"status"\s*:\s*"SoldOut"/i.test(data)) return 'OUT_OF_STOCK';
-    if (/"productStatus"\s*:\s*"InStock"/i.test(data) || /"status"\s*:\s*"InStock"/i.test(data)) return 'IN_STOCK';
+    if (/"inStock"\s*:\s*true/i.test(data))    return 'IN_STOCK';
+    if (/"inStock"\s*:\s*false/i.test(data))   return 'OUT_OF_STOCK';
     if (/"purchasable"\s*:\s*true/i.test(data)) return 'IN_STOCK';
     if (/"purchasable"\s*:\s*false/i.test(data)) return 'OUT_OF_STOCK';
-    // Button-level signals
-    const hasAddToCart = /add to cart/i.test(data);
-    const hasSoldOut   = /sold out/i.test(data);
-    const hasOOS       = /out of stock/i.test(data);
-    if (hasAddToCart && !hasSoldOut && !hasOOS) return 'IN_STOCK';
-    if ((hasSoldOut || hasOOS) && !hasAddToCart) return 'OUT_OF_STOCK';
+
+    // PS Direct uses "Currently Unavailable" (not "out of stock") as their OOS label
+    // "Sign In to Buy" means the product IS buyable but requires a PSN account
+    const hasSignInToBuy     = /sign in to buy/i.test(data);
+    const hasCurrentlyUnavail = /currently unavailable/i.test(data);
+    const hasLowStock        = /low stock/i.test(data);
+    const hasAddToCart       = /add to cart/i.test(data);
+
+    // "Low stock" or "Add to Cart" without "Currently Unavailable" = in stock
+    if ((hasLowStock || hasAddToCart) && !hasCurrentlyUnavail) return 'IN_STOCK';
+    // "Currently Unavailable" without any buy signal = out of stock
+    if (hasCurrentlyUnavail && !hasSignInToBuy && !hasAddToCart) return 'OUT_OF_STOCK';
+    // "Sign In to Buy" = available but requires PSN login
+    if (hasSignInToBuy && !hasCurrentlyUnavail) return 'IN_STOCK';
+
     return 'UNKNOWN';
   } catch {
     return 'UNKNOWN';
@@ -225,32 +357,20 @@ async function checkPlayStationDirect(url: string): Promise<'IN_STOCK' | 'OUT_OF
 
 async function checkStockX(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
-    // StockX is a pure SPA — no useful content in HTML. Use their internal product API.
-    const urlKey = url.replace(/\?.*$/, '').replace(/\/$/, '').split('/').pop();
-    if (!urlKey || urlKey.includes('stockx.com')) return 'UNKNOWN';
+    // StockX's internal API is blocked from server IPs.
+    // Their HTML shell DOES load, and "Make Offer" / "Buy Now" appear in the
+    // static markup when active seller listings exist — use that as the signal.
+    const { data } = await axios.get(url, {
+      timeout: 12000,
+      headers: { 'User-Agent': randomUA(), 'Accept-Language': 'en-US,en;q=0.9' },
+    });
 
-    const { data } = await axios.get(
-      `https://stockx.com/api/products/${urlKey}?includes=market&currency=USD`,
-      {
-        timeout: 10000,
-        headers: {
-          'User-Agent': randomUA(),
-          'Accept': 'application/json',
-          'x-requested-with': 'XMLHttpRequest',
-          'Referer': url,
-        },
-      }
-    );
+    // "Make Offer" in static HTML = buy widget is present = active listings exist
+    if (/make offer/i.test(data) || /buy now/i.test(data)) return 'IN_STOCK';
 
-    const market = data?.Product?.market;
-    if (!market) return 'UNKNOWN';
-
-    const numberOfAsks = market.numberOfAsks ?? 0;
-    const lowestAsk    = market.lowestAsk ?? 0;
-
-    // On StockX, "in stock" means active seller listings exist
-    if (numberOfAsks > 0 || lowestAsk > 0) return 'IN_STOCK';
-    if (numberOfAsks === 0 && data?.Product) return 'OUT_OF_STOCK';
+    // StockX doesn't show "out of stock" for marketplace items —
+    // if the page loads but has no buy widget it's genuinely delisted
+    if (data && data.length > 500) return 'UNKNOWN'; // page loaded but no buy signal
     return 'UNKNOWN';
   } catch {
     return 'UNKNOWN';
@@ -335,7 +455,7 @@ async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 
   }
 }
 
-async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+async function checkUrl(url: string, storeSlug?: string, productName?: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   const domain = getDomain(url);
 
   if (domain.includes('bestbuy.com'))           return checkBestBuy(url);
@@ -344,8 +464,8 @@ async function checkUrl(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNK
   if (domain.includes('nintendo.com'))          return checkNintendo(url);
   if (domain.includes('newegg.com'))            return checkNewegg(url);
   if (domain.includes('dell.com'))              return checkDell(url);
-  if (domain.includes('gamestop.com'))          return checkGameStop(url);
-  if (domain.includes('abt.com'))               return checkAbt(url);
+  if (domain.includes('gamestop.com'))          return checkGameStop(url, productName);
+  if (domain.includes('abt.com'))               return checkAbt(url, productName);
   if (domain.includes('direct.playstation.com') || domain.includes('playstation.com')) return checkPlayStationDirect(url);
   if (domain.includes('stockx.com'))            return checkStockX(url);
 
@@ -396,7 +516,7 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
     if (!sp || !sp.url) return;
 
     const wasInStock = sp.inStock;
-    const status = await checkUrl(sp.url);
+    const status = await checkUrl(sp.url, sp.store.slug, sp.product.name);
 
     logger.info(`Stock check ${sp.store.name} / ${sp.product.name}: ${status}`);
 

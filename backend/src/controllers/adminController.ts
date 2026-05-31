@@ -138,7 +138,7 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
         orderBy: { createdAt: 'desc' },
         include: {
           _count: { select: { trackings: { where: { isActive: true } } } },
-          storeListings: { select: { inStock: true } },
+          storeListings: { select: { inStock: true, lastChecked: true } },
         },
       }),
       prisma.product.count({ where }),
