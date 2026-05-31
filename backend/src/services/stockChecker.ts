@@ -1,16 +1,18 @@
 import cron from 'node-cron';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import puppeteer from 'puppeteer-core';
+import type { Browser } from 'puppeteer-core';
 import { prisma } from '../config/database';
 import { sendNotificationToUser } from './notificationService';
 import logger from '../utils/logger';
 
 // ── Browser search fallback ───────────────────────────────────────────────────
 // Used for retailers that block direct HTTP requests (GameStop, ABT, etc.)
-// Launches a real stealth Chromium browser, searches the store for the product
-// name, and checks if the first matching result is available to buy.
+// Launches Chromium, searches the store for the product name, and checks
+// if the first matching result is available to buy.
 
-let browserBusy = false; // prevent multiple simultaneous browser instances
+let browserBusy = false;
 
 const BROWSER_SEARCH_URLS: Record<string, string> = {
   gamestop: 'https://www.gamestop.com/search/?q={query}',
@@ -30,16 +32,9 @@ async function checkViaSearch(
 
   const searchUrl = template.replace('{query}', encodeURIComponent(productName));
   browserBusy = true;
-  let browser: any;
+  let browser: Browser | undefined;
 
   try {
-    // Dynamic require avoids ESM/CJS issues at compile time
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const puppeteer = require('puppeteer-extra');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-    puppeteer.use(StealthPlugin());
-
     browser = await puppeteer.launch({
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
@@ -58,25 +53,32 @@ async function checkViaSearch(
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
 
-    logger.info(`Browser search: ${storeSlug} → "${productName}" at ${searchUrl}`);
+    // Manual stealth: override webdriver flag that sites detect
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
+
+    logger.info(`Browser search: ${storeSlug} → "${productName}"`);
     await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Give JS time to render product cards
-    await new Promise(r => setTimeout(r, 3000));
+    // Wait for JS to render product cards
+    await new Promise<void>(r => setTimeout(r, 3000));
 
-    const status: string = await page.evaluate((name: string) => {
-      const nameWords = name.toLowerCase().split(' ').filter((w: string) => w.length > 3);
+    // Evaluate runs in browser context — no TypeScript annotations allowed inside
+    const status = await page.evaluate((name: string) => {
+      const nameWords = name.toLowerCase().split(' ').filter(w => w.length > 3);
 
-      // Try to find a product card that matches our product name
       const cardSelectors = [
         '[class*="product-item"]', '[class*="ProductCard"]', '[class*="product-card"]',
-        'li[class*="product"]',   '[data-testid*="product"]',  '[class*="search-result"]',
+        'li[class*="product"]',    '[data-testid*="product"]', '[class*="search-result"]',
       ];
       for (const sel of cardSelectors) {
-        const cards = Array.from(document.querySelectorAll(sel));
-        for (const card of cards) {
+        for (const card of Array.from(document.querySelectorAll(sel))) {
           const cardText = (card.textContent || '').toLowerCase();
-          const matches = nameWords.filter((w: string) => cardText.includes(w)).length;
+          const matches = nameWords.filter(w => cardText.includes(w)).length;
           if (matches >= Math.min(2, nameWords.length)) {
             const html = card.innerHTML.toLowerCase();
             if (/add[\s-]to[\s-]cart/i.test(html)) return 'IN_STOCK';
@@ -85,7 +87,6 @@ async function checkViaSearch(
         }
       }
 
-      // No card matched — fall back to page-level signals (conservative)
       const body = document.body.innerText.toLowerCase();
       const hasAdd    = /add to cart/i.test(body);
       const hasNotify = /notify me when available/i.test(body);
@@ -93,17 +94,18 @@ async function checkViaSearch(
       if (hasAdd && !hasNotify && !hasSold) return 'IN_STOCK';
       if ((hasNotify || hasSold) && !hasAdd) return 'OUT_OF_STOCK';
       return 'UNKNOWN';
-    }, productName);
+    }, productName) as 'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN';
 
     logger.info(`Browser search result: ${storeSlug} "${productName}" → ${status}`);
-    return status as 'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN';
+    return status;
 
-  } catch (err: any) {
-    logger.warn(`Browser search failed for ${storeSlug}: ${err.message}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`Browser search failed for ${storeSlug}: ${msg}`);
     return 'UNKNOWN';
   } finally {
     browserBusy = false;
-    if (browser) { try { await browser.close(); } catch {} }
+    if (browser) { try { await browser.close(); } catch { /* ignore */ } }
   }
 }
 
