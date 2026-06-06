@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { BaseScraper, StockResult } from './base';
 
 /**
@@ -16,6 +17,38 @@ import { BaseScraper, StockResult } from './base';
 export class EbayScraper extends BaseScraper {
   constructor() {
     super('ebay');
+  }
+
+  /**
+   * Fetch an eBay page with headers that mimic a real browser session.
+   * eBay blocks plain axios requests (no cookies, no sec-fetch headers).
+   */
+  private async fetchEbayPage(url: string): Promise<string> {
+    const response = await axios.get(url, {
+      timeout: 20000,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        Referer: 'https://www.ebay.com/',
+      },
+      // Follow redirects (eBay sometimes redirects to a regional domain)
+      maxRedirects: 5,
+    });
+    return response.data;
   }
 
   async checkStock(productUrl: string, _storeProductId?: string): Promise<StockResult> {
@@ -51,8 +84,13 @@ export class EbayScraper extends BaseScraper {
   }
 
   private async checkViaSearch(searchUrl: string, originalUrl: string): Promise<StockResult> {
-    const html = await this.fetchPage(searchUrl);
+    const html = await this.fetchEbayPage(searchUrl);
     const $ = this.loadHtml(html);
+
+    // Debug: log a snippet so we can tell if eBay returned a real page or a bot block
+    const bodySnippet = $('body').text().slice(0, 200).replace(/\s+/g, ' ').trim();
+    console.log(`[eBay] body snippet: ${bodySnippet}`);
+    console.log(`[eBay] .s-item count (raw): ${$('.s-item').length}`);
 
     // eBay search result items are in <li> elements with class "s-item"
     // The first .s-item is often a ghost/template element — filter it out by
