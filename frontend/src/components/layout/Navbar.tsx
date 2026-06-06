@@ -130,14 +130,13 @@ export default function Navbar() {
                           <Link
                             key={to}
                             to={to}
-                            onMouseDown={() => setMenuOpen(false)}
                             className="block px-3 py-2 text-subhead text-white hover:bg-dark-surface2 rounded-apple transition-colors"
                           >
                             {label}
                           </Link>
                         ))}
                         <button
-                          onMouseDown={handleLogout}
+                          onClick={handleLogout}
                           className="w-full text-left px-3 py-2 text-subhead text-apple-red hover:bg-apple-red/10 rounded-apple transition-colors mt-1"
                         >
                           Sign Out

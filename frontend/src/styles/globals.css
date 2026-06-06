@@ -2,6 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme CSS Variables ───────────────────────────────────────── */
+/* Dark mode defaults (also explicit .dark class) */
+:root, .dark {
+  --t-bg:           #000000;
+  --t-bg2:          #0a0a0a;
+  --t-surface1:     #1c1c1e;
+  --t-surface2:     #2c2c2e;
+  --t-surface3:     #3a3a3c;
+  --t-surface4:     #48484a;
+  --t-label1:       #ffffff;
+  --t-label2:       rgba(235, 235, 245, 0.6);
+  --t-label3:       rgba(235, 235, 245, 0.3);
+  --t-label4:       rgba(235, 235, 245, 0.18);
+  --t-separator:    #38383a;
+  --t-opaque:       #545458;
+  --t-glass:        rgba(28, 28, 30, 0.85);
+  --t-glass-light:  rgba(44, 44, 46, 0.6);
+  --t-skel-from:    #2c2c2e;
+  --t-skel-to:      #3a3a3c;
+}
+
+/* Light mode overrides */
+.light {
+  --t-bg:           #f2f2f7;
+  --t-bg2:          #e5e5ea;
+  --t-surface1:     #ffffff;
+  --t-surface2:     #f2f2f7;
+  --t-surface3:     #e5e5ea;
+  --t-surface4:     #d1d1d6;
+  --t-label1:       #000000;
+  --t-label2:       rgba(60, 60, 67, 0.6);
+  --t-label3:       rgba(60, 60, 67, 0.3);
+  --t-label4:       rgba(60, 60, 67, 0.18);
+  --t-separator:    rgba(60, 60, 67, 0.29);
+  --t-opaque:       #aeaeb2;
+  --t-glass:        rgba(255, 255, 255, 0.88);
+  --t-glass-light:  rgba(242, 242, 247, 0.7);
+  --t-skel-from:    #e5e5ea;
+  --t-skel-to:      #d1d1d6;
+}
+
 @keyframes fadeSlideDown {
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
@@ -21,7 +62,8 @@
   }
 
   body {
-    @apply bg-dark-bg text-white font-sans;
+    @apply bg-dark-bg font-sans;
+    color: var(--t-label1);
     overscroll-behavior: none;
   }
 
@@ -46,7 +88,7 @@
     @apply card transition-all duration-200 hover:bg-dark-surface2 hover:scale-[1.01] active:scale-[0.99] cursor-pointer;
   }
   .glass-card {
-    background: rgba(28, 28, 30, 0.8);
+    background: var(--t-glass);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     @apply border border-dark-separator rounded-apple-lg;
@@ -63,7 +105,7 @@
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
-           bg-dark-surface2 text-white font-semibold
+           bg-dark-surface2 text-dark-label1 font-semibold
            px-6 py-3 rounded-pill border border-dark-separator
            transition-all duration-200
            hover:bg-dark-surface3 active:scale-[0.97]
@@ -87,14 +129,14 @@
   .btn-icon {
     @apply inline-flex items-center justify-center
            w-10 h-10 rounded-full
-           bg-dark-surface2 text-white border border-dark-separator
+           bg-dark-surface2 text-dark-label1 border border-dark-separator
            transition-all duration-200
            hover:bg-dark-surface3 active:scale-[0.95];
   }
 
   /* ── Inputs ──────────────────── */
   .input {
-    @apply w-full bg-dark-surface2 text-white placeholder-dark-label3
+    @apply w-full bg-dark-surface2 text-dark-label1 placeholder-dark-label3
            border border-dark-separator rounded-apple
            px-4 py-3 text-body
            transition-all duration-200 outline-none
@@ -111,7 +153,7 @@
   /* ── Skeleton ────────────────── */
   .skeleton {
     @apply rounded-apple animate-shimmer;
-    background: linear-gradient(90deg, #2c2c2e 25%, #3a3a3c 50%, #2c2c2e 75%);
+    background: linear-gradient(90deg, var(--t-skel-from) 25%, var(--t-skel-to) 50%, var(--t-skel-from) 75%);
     background-size: 400% 100%;
   }
 
@@ -120,12 +162,12 @@
     @apply flex items-center gap-2 px-4 py-2.5 rounded-apple
            text-subhead font-medium text-dark-label2
            transition-all duration-200
-           hover:bg-dark-surface2 hover:text-white;
+           hover:bg-dark-surface2 hover:text-dark-label1;
   }
-  .nav-link.active { @apply bg-dark-surface2 text-white; }
+  .nav-link.active { @apply bg-dark-surface2 text-dark-label1; }
 
   /* ── Section headings ────────── */
-  .section-title    { @apply text-title1 font-bold text-white mb-1; }
+  .section-title    { @apply text-title1 font-bold text-dark-label1 mb-1; }
   .section-subtitle { @apply text-subhead text-dark-label2; }
 
   /* ── Page container ──────────── */
@@ -150,12 +192,12 @@
 
   /* Frosted glass */
   .glass {
-    background: rgba(28, 28, 30, 0.8);
+    background: var(--t-glass);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
   .glass-light {
-    background: rgba(44, 44, 46, 0.6);
+    background: var(--t-glass-light);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
