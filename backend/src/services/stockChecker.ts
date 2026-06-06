@@ -400,17 +400,80 @@ async function checkDell(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UN
   }
 }
 
+async function checkEbayViaPuppeteer(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  if (browserBusy) {
+    logger.info('[eBay] Browser busy — skipping Puppeteer fallback');
+    return 'UNKNOWN';
+  }
+
+  // Ensure LH_BIN=1 (Buy It Now filter)
+  let searchUrl = url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has('LH_BIN')) parsed.searchParams.set('LH_BIN', '1');
+    searchUrl = parsed.toString();
+  } catch {}
+
+  browserBusy = true;
+  let browser: Browser | undefined;
+
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      args: [
+        '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+        '--disable-gpu', '--window-size=1280,800',
+      ],
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
+
+    logger.info(`[eBay] Puppeteer fetching: ${searchUrl}`);
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise<void>(r => setTimeout(r, 2000));
+
+    const count = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.s-item'));
+      return items.filter(el => {
+        const title = el.querySelector('.s-item__title');
+        const text = title?.textContent?.trim() ?? '';
+        return text.length > 0 && text !== 'Shop on eBay';
+      }).length;
+    });
+
+    logger.info(`[eBay] Puppeteer found ${count} listing(s)`);
+    return count > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK';
+  } catch (err: any) {
+    logger.warn(`[eBay] Puppeteer fallback failed: ${err.message}`);
+    return 'UNKNOWN';
+  } finally {
+    browserBusy = false;
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
 async function checkEbay(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  // Try EbayScraper first (RSS → HTML, fast, no browser overhead)
   try {
     const scraper = getScraperForStore('ebay');
     const result = await scraper.checkStock(url);
     if (result.status === 'IN_STOCK') return 'IN_STOCK';
     if (result.status === 'OUT_OF_STOCK') return 'OUT_OF_STOCK';
-    return 'UNKNOWN';
   } catch (err: any) {
-    logger.warn(`checkEbay failed for ${url}: ${err.message}`);
-    return 'UNKNOWN';
+    logger.warn(`[eBay] Scraper failed: ${err.message}`);
   }
+  // Fall back to Puppeteer (real browser, bypasses eBay bot detection)
+  logger.info('[eBay] Falling back to Puppeteer');
+  return checkEbayViaPuppeteer(url);
 }
 
 async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
