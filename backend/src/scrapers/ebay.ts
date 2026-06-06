@@ -8,23 +8,172 @@ import { BaseScraper, StockResult } from './base';
  * persistent eBay search URLs instead (e.g. https://www.ebay.com/sch/i.html?_nkw=rtx+4090).
  *
  * Stock logic:
- *   IN_STOCK     = at least 1 active Buy It Now listing found in search results
+ *   IN_STOCK     = at least 1 active Buy It Now listing found
  *   OUT_OF_STOCK = 0 active listings found
  *
  * The scraper automatically appends LH_BIN=1 (Buy It Now filter) to exclude
  * auctions and only track fixed-price listings.
+ *
+ * Strategy: try RSS feed first (less bot-detection), fall back to HTML scraping.
  */
 export class EbayScraper extends BaseScraper {
   constructor() {
     super('ebay');
   }
 
+  async checkStock(productUrl: string, _storeProductId?: string): Promise<StockResult> {
+    const searchUrl = this.ensureBuyItNow(productUrl);
+
+    // --- Strategy 1: RSS feed (programmatic, less bot detection) ---
+    try {
+      const result = await this.checkViaRss(searchUrl, productUrl);
+      if (result.status !== 'UNKNOWN') {
+        return result;
+      }
+    } catch (rssError: any) {
+      console.log(`[eBay] RSS attempt failed: ${rssError.message}`);
+    }
+
+    // --- Strategy 2: HTML scraping fallback ---
+    try {
+      return await this.checkViaHtml(searchUrl, productUrl);
+    } catch (error: any) {
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl,
+        message: `All fetch strategies failed: ${error.message}`,
+      };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
   /**
-   * Fetch an eBay page with headers that mimic a real browser session.
-   * eBay blocks plain axios requests (no cookies, no sec-fetch headers).
+   * Append LH_BIN=1 (Buy It Now) to the URL if not already present.
    */
-  private async fetchEbayPage(url: string): Promise<string> {
-    const response = await axios.get(url, {
+  private ensureBuyItNow(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (!parsed.searchParams.has('LH_BIN')) {
+        parsed.searchParams.set('LH_BIN', '1');
+      }
+      return parsed.toString();
+    } catch {
+      const separator = url.includes('?') ? '&' : '?';
+      return url.includes('LH_BIN') ? url : `${url}${separator}LH_BIN=1`;
+    }
+  }
+
+  /**
+   * Convert a search URL to its RSS equivalent by appending _rss=1.
+   */
+  private buildRssUrl(searchUrl: string): string {
+    try {
+      const parsed = new URL(searchUrl);
+      parsed.searchParams.set('_rss', '1');
+      return parsed.toString();
+    } catch {
+      const sep = searchUrl.includes('?') ? '&' : '?';
+      return `${searchUrl}${sep}_rss=1`;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strategy 1: RSS
+  // ---------------------------------------------------------------------------
+
+  private async checkViaRss(searchUrl: string, originalUrl: string): Promise<StockResult> {
+    const rssUrl = this.buildRssUrl(searchUrl);
+    console.log(`[eBay] Fetching RSS: ${rssUrl}`);
+
+    const response = await axios.get(rssUrl, {
+      timeout: 20000,
+      headers: {
+        // RSS feeds are intended for feed readers — a simple UA is fine
+        'User-Agent': 'Mozilla/5.0 (compatible; Trackit/1.0; +https://github.com/)',
+        Accept: 'application/rss+xml, text/xml, application/xml, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+      },
+      maxRedirects: 5,
+    });
+
+    // axios may auto-parse XML to an object; stringify if so
+    const xml: string =
+      typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+
+    const snippet = xml.slice(0, 300).replace(/\s+/g, ' ').trim();
+    console.log(`[eBay] RSS size=${xml.length}, snippet: ${snippet}`);
+
+    // Each eBay listing is an <item> element in the feed
+    const itemMatches = xml.match(/<item>/gi);
+    const count = itemMatches ? itemMatches.length : 0;
+    console.log(`[eBay] RSS item count: ${count}`);
+
+    // If the response looks like a bot-block page (no XML structure), return UNKNOWN
+    // so the caller falls through to HTML scraping
+    if (!xml.includes('<rss') && !xml.includes('<channel')) {
+      console.log('[eBay] RSS response does not look like valid XML — bot block?');
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl: originalUrl,
+        message: 'RSS response was not valid XML',
+      };
+    }
+
+    if (count === 0) {
+      return {
+        storeSlug: this.storeSlug,
+        status: 'OUT_OF_STOCK',
+        productUrl: originalUrl,
+        message: 'No active Buy It Now listings found',
+      };
+    }
+
+    const lowestPrice = this.extractPricesFromXml(xml);
+
+    return {
+      storeSlug: this.storeSlug,
+      status: 'IN_STOCK',
+      price: lowestPrice,
+      productUrl: originalUrl,
+      message: `${count} active listing${count === 1 ? '' : 's'} found`,
+    };
+  }
+
+  /**
+   * Scan RSS XML for all dollar-amount prices and return the lowest.
+   * eBay RSS prices appear in <title> as "Item Name $XXX.XX" or in <description>.
+   */
+  private extractPricesFromXml(xml: string): number | undefined {
+    let lowest: number | undefined;
+    const priceRegex = /\$([\d,]+\.?\d*)/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = priceRegex.exec(xml)) !== null) {
+      const price = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(price) && price > 0) {
+        if (lowest === undefined || price < lowest) {
+          lowest = price;
+        }
+      }
+    }
+
+    return lowest;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strategy 2: HTML scraping
+  // ---------------------------------------------------------------------------
+
+  private async checkViaHtml(searchUrl: string, originalUrl: string): Promise<StockResult> {
+    console.log(`[eBay] Fetching HTML: ${searchUrl}`);
+
+    const response = await axios.get(searchUrl, {
       timeout: 20000,
       headers: {
         'User-Agent':
@@ -45,59 +194,20 @@ export class EbayScraper extends BaseScraper {
         'Upgrade-Insecure-Requests': '1',
         Referer: 'https://www.ebay.com/',
       },
-      // Follow redirects (eBay sometimes redirects to a regional domain)
       maxRedirects: 5,
     });
-    return response.data;
-  }
 
-  async checkStock(productUrl: string, _storeProductId?: string): Promise<StockResult> {
-    try {
-      const searchUrl = this.ensureBuyItNow(productUrl);
-      return await this.checkViaSearch(searchUrl, productUrl);
-    } catch (error: any) {
-      return {
-        storeSlug: this.storeSlug,
-        status: 'UNKNOWN',
-        productUrl,
-        message: error.message,
-      };
-    }
-  }
+    const html: string =
+      typeof response.data === 'string' ? response.data : String(response.data);
 
-  /**
-   * Append LH_BIN=1 (Buy It Now) to the URL if it's not already present.
-   * This filters out auction-only listings so we only track fixed-price inventory.
-   */
-  private ensureBuyItNow(url: string): string {
-    try {
-      const parsed = new URL(url);
-      if (!parsed.searchParams.has('LH_BIN')) {
-        parsed.searchParams.set('LH_BIN', '1');
-      }
-      return parsed.toString();
-    } catch {
-      // If URL parsing fails, append manually
-      const separator = url.includes('?') ? '&' : '?';
-      return url.includes('LH_BIN') ? url : `${url}${separator}LH_BIN=1`;
-    }
-  }
-
-  private async checkViaSearch(searchUrl: string, originalUrl: string): Promise<StockResult> {
-    const html = await this.fetchEbayPage(searchUrl);
     const $ = this.loadHtml(html);
 
-    // Debug: log a snippet so we can tell if eBay returned a real page or a bot block
     const bodySnippet = $('body').text().slice(0, 200).replace(/\s+/g, ' ').trim();
-    console.log(`[eBay] body snippet: ${bodySnippet}`);
-    console.log(`[eBay] .s-item count (raw): ${$('.s-item').length}`);
+    console.log(`[eBay] HTML body snippet: ${bodySnippet}`);
+    console.log(`[eBay] HTML .s-item count: ${$('.s-item').length}`);
 
-    // eBay search result items are in <li> elements with class "s-item"
-    // The first .s-item is often a ghost/template element — filter it out by
-    // checking for the presence of a real title or price inside it.
     const listingItems = $('.s-item').filter((_i, el) => {
       const title = $(el).find('.s-item__title').text().trim();
-      // eBay injects a dummy "Shop on eBay" item as the first result
       return title.length > 0 && title !== 'Shop on eBay';
     });
 
@@ -112,8 +222,7 @@ export class EbayScraper extends BaseScraper {
       };
     }
 
-    // Extract the lowest listed price from the visible results
-    const lowestPrice = this.extractLowestPrice($, listingItems);
+    const lowestPrice = this.extractLowestPriceFromHtml($, listingItems);
 
     return {
       storeSlug: this.storeSlug,
@@ -125,16 +234,14 @@ export class EbayScraper extends BaseScraper {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private extractLowestPrice($: any, items: any): number | undefined {
+  private extractLowestPriceFromHtml($: any, items: any): number | undefined {
     let lowest: number | undefined;
 
     items.each((_i: number, el: any) => {
-      // Price can appear as a plain value or as a range (e.g. "$249.99 to $399.99")
-      // .s-item__price contains the price text
       const priceText = $(el).find('.s-item__price').first().text().trim();
       if (!priceText) return;
 
-      // Handle range prices — take the lower bound
+      // Handle price ranges — take the lower bound
       const rangeMatch = priceText.match(/\$([\d,]+\.?\d*)\s+to\s+\$([\d,]+\.?\d*)/i);
       if (rangeMatch) {
         const low = parseFloat(rangeMatch[1].replace(/,/g, ''));
