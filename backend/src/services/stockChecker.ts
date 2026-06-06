@@ -415,7 +415,8 @@ async function checkEbayViaPuppeteer(url: string): Promise<'IN_STOCK' | 'OUT_OF_
   } catch {}
 
   browserBusy = true;
-  let browser: Browser | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let browser: any;
 
   try {
     // Use puppeteer-extra + stealth to bypass eBay's headless browser detection
