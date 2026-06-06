@@ -1,5 +1,4 @@
 import { BaseScraper, StockResult } from './base';
-import * as cheerio from 'cheerio';
 
 /**
  * eBay Scraper
@@ -87,10 +86,11 @@ export class EbayScraper extends BaseScraper {
     };
   }
 
-  private extractLowestPrice($: cheerio.CheerioAPI, items: cheerio.Cheerio<any>): number | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractLowestPrice($: any, items: any): number | undefined {
     let lowest: number | undefined;
 
-    items.each((_i: number, el: cheerio.Element) => {
+    items.each((_i: number, el: any) => {
       // Price can appear as a plain value or as a range (e.g. "$249.99 to $399.99")
       // .s-item__price contains the price text
       const priceText = $(el).find('.s-item__price').first().text().trim();
