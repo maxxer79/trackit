@@ -532,11 +532,33 @@ export default function AdminProducts() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-caption2 text-dark-label3 mb-1">Product URL at this store *</label>
-                <input type="url" value={storeForm.url} onChange={(e) => setStoreForm(f => ({ ...f, url: e.target.value }))}
-                  className="input" placeholder="https://www.bestbuy.com/site/..." />
-              </div>
+              {(() => {
+                const selectedStore = (allStores as any[]).find((s: any) => s.id === storeForm.storeId);
+                const isEbay = selectedStore?.slug === 'ebay';
+                return (
+                  <div>
+                    <label className="block text-caption2 text-dark-label3 mb-1">
+                      {isEbay ? 'eBay Search URL *' : 'Product URL at this store *'}
+                    </label>
+                    <input
+                      type="url"
+                      value={storeForm.url}
+                      onChange={(e) => setStoreForm(f => ({ ...f, url: e.target.value }))}
+                      className="input"
+                      placeholder={
+                        isEbay
+                          ? 'https://www.ebay.com/sch/i.html?_nkw=rtx+4090'
+                          : 'https://www.bestbuy.com/site/...'
+                      }
+                    />
+                    {isEbay && (
+                      <p className="text-caption2 text-dark-label3 mt-1">
+                        Paste an eBay search URL for the item you want to track. Trackit will report In Stock when active Buy It Now listings exist. Tip: search for the item on eBay, then copy the URL.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <label className="block text-caption2 text-dark-label3 mb-1">Price (optional)</label>
                 <input type="number" value={storeForm.price} onChange={(e) => setStoreForm(f => ({ ...f, price: e.target.value }))}
