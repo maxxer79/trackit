@@ -6,6 +6,7 @@ import type { Browser } from 'puppeteer-core';
 import { prisma } from '../config/database';
 import { sendNotificationToUser } from './notificationService';
 import logger from '../utils/logger';
+import { getScraperForStore } from '../scrapers/index';
 
 // ── Browser search fallback ───────────────────────────────────────────────────
 // Used for retailers that block direct HTTP requests (GameStop, ABT, etc.)
@@ -399,6 +400,19 @@ async function checkDell(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UN
   }
 }
 
+async function checkEbay(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  try {
+    const scraper = getScraperForStore('ebay');
+    const result = await scraper.checkStock(url);
+    if (result.status === 'IN_STOCK') return 'IN_STOCK';
+    if (result.status === 'OUT_OF_STOCK') return 'OUT_OF_STOCK';
+    return 'UNKNOWN';
+  } catch (err: any) {
+    logger.warn(`checkEbay failed for ${url}: ${err.message}`);
+    return 'UNKNOWN';
+  }
+}
+
 async function checkGeneric(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
   try {
     const response = await axios.get(url, {
@@ -470,6 +484,7 @@ async function checkUrl(url: string, storeSlug?: string, productName?: string): 
   if (domain.includes('abt.com'))               return checkAbt(url, productName);
   if (domain.includes('direct.playstation.com') || domain.includes('playstation.com')) return checkPlayStationDirect(url);
   if (domain.includes('stockx.com'))            return checkStockX(url);
+  if (domain.includes('ebay.com'))              return checkEbay(url);
 
   return checkGeneric(url);
 }
