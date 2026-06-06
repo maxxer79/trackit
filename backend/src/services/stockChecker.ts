@@ -418,7 +418,14 @@ async function checkEbayViaPuppeteer(url: string): Promise<'IN_STOCK' | 'OUT_OF_
   let browser: Browser | undefined;
 
   try {
-    browser = await puppeteer.launch({
+    // Use puppeteer-extra + stealth to bypass eBay's headless browser detection
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const puppeteerExtra = require('puppeteer-extra');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    puppeteerExtra.use(StealthPlugin());
+
+    browser = await puppeteerExtra.launch({
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
       args: [
@@ -430,28 +437,33 @@ async function checkEbayViaPuppeteer(url: string): Promise<'IN_STOCK' | 'OUT_OF_
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     );
 
-    logger.info(`[eBay] Puppeteer fetching: ${searchUrl}`);
+    logger.info(`[eBay] Puppeteer (stealth) fetching: ${searchUrl}`);
     await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await new Promise<void>(r => setTimeout(r, 2000));
+    await new Promise<void>(r => setTimeout(r, 3000));
 
-    const count = await page.evaluate(() => {
+    // Log page title for debugging bot-detection vs real page
+    const title = await page.title();
+    logger.info(`[eBay] Page title: ${title}`);
+
+    const result = await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('.s-item'));
-      return items.filter(el => {
+      const realItems = items.filter(el => {
         const title = el.querySelector('.s-item__title');
         const text = title?.textContent?.trim() ?? '';
         return text.length > 0 && text !== 'Shop on eBay';
-      }).length;
+      });
+      // Also try alternate selectors in case eBay changed class names
+      const altItems = document.querySelectorAll('[data-viewport]').length;
+      return { count: realItems.length, altCount: altItems, bodySnippet: document.body.innerText.slice(0, 200) };
     });
 
-    logger.info(`[eBay] Puppeteer found ${count} listing(s)`);
-    return count > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK';
+    logger.info(`[eBay] Puppeteer found ${result.count} listing(s) (alt: ${result.altCount})`);
+    logger.info(`[eBay] Body snippet: ${result.bodySnippet.replace(/\n/g, ' ')}`);
+    return result.count > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK';
   } catch (err: any) {
     logger.warn(`[eBay] Puppeteer fallback failed: ${err.message}`);
     return 'UNKNOWN';
