@@ -15,13 +15,37 @@ export class TargetScraper extends BaseScraper {
         try {
           const response = await this.client.get(apiUrl);
           const product = response.data?.data?.product;
-          const availability = product?.fulfillment?.shipping_options?.availability_status;
+          const fulfillment = product?.fulfillment;
+          const availability = fulfillment?.shipping_options?.availability_status;
           const price = product?.price?.current_retail;
 
-          let status: StockResult['status'] = 'UNKNOWN';
-          if (availability === 'IN_STOCK') status = 'IN_STOCK';
-          else if (availability === 'OUT_OF_STOCK') status = 'OUT_OF_STOCK';
-          else if (availability === 'PREORDER') status = 'PREORDER';
+          // Check preorder state — if it's a preorder product, availability_status
+          // can incorrectly read IN_STOCK even when the button is disabled.
+          // is_available_for_preorder = true  → PREORDER (button works)
+          // is_available_for_preorder = false → OUT_OF_STOCK (button disabled)
+          const isPreorder: boolean =
+            fulfillment?.preorder?.is_preorder === true ||
+            availability === 'PREORDER';
+          const preorderAvailable: boolean =
+            fulfillment?.preorder?.is_available_for_preorder !== false;
+
+          let status: StockResult['status'];
+
+          if (isPreorder) {
+            status = preorderAvailable ? 'PREORDER' : 'OUT_OF_STOCK';
+          } else if (availability === 'IN_STOCK') {
+            status = 'IN_STOCK';
+          } else if (
+            availability === 'OUT_OF_STOCK' ||
+            availability === 'UNAVAILABLE' ||
+            availability === 'NOT_SOLD_IN_STORE'
+          ) {
+            status = 'OUT_OF_STOCK';
+          } else if (availability === 'BACKORDER') {
+            status = 'OUT_OF_STOCK';
+          } else {
+            status = 'UNKNOWN';
+          }
 
           return {
             storeSlug: this.storeSlug,
