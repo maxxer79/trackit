@@ -651,7 +651,10 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
     if (!sp || !sp.url) return;
 
     const wasInStock = sp.inStock;
-    const status = await checkUrl(sp.url, sp.store.slug, sp.product.name);
+    // Use scraper index so all stores get the latest scraper logic (same path as Bull worker)
+    const scraper = getScraperForStore(sp.store.slug);
+    const scraperResult = await scraper.checkStock(sp.url, sp.id);
+    const status = scraperResult.status;
 
     logger.info(`Stock check ${sp.store.name} / ${sp.product.name}: ${status}`);
 
@@ -664,7 +667,7 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
       return;
     }
 
-    const nowInStock = status === 'IN_STOCK';
+    const nowInStock = status === 'IN_STOCK' || status === 'LIMITED';
 
     await prisma.storeProduct.update({
       where: { id: storeProductId },
