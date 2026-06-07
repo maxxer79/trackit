@@ -19,6 +19,9 @@ export class TargetScraper extends BaseScraper {
           const availability = fulfillment?.shipping_options?.availability_status;
           const price = product?.price?.current_retail;
 
+          // DEBUG: log raw fulfillment so we can see what Target actually returns
+          console.log('[Target] fulfillment:', JSON.stringify(fulfillment, null, 2));
+
           // Check preorder state — if it's a preorder product, availability_status
           // can incorrectly read IN_STOCK even when the button is disabled.
           // is_available_for_preorder = true  → PREORDER (button works)
