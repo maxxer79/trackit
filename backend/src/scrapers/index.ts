@@ -7,6 +7,7 @@ import { NeweggScraper } from './newegg';
 import { GameStopScraper } from './gamestop';
 import { EbayScraper } from './ebay';
 import { GenericScraper } from './generic';
+import { HasbroPulseScraper } from './hasbropulse';
 
 const scraperRegistry: Map<string, BaseScraper> = new Map();
 
@@ -18,6 +19,7 @@ scraperRegistry.set('target', new TargetScraper());
 scraperRegistry.set('newegg', new NeweggScraper());
 scraperRegistry.set('gamestop', new GameStopScraper());
 scraperRegistry.set('ebay', new EbayScraper());
+scraperRegistry.set('hasbropulse', new HasbroPulseScraper());
 
 // All other stores use the generic scraper
 const allStores = [

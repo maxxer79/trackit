@@ -59,6 +59,7 @@ const stores = [
   { slug: 'nike', name: 'Nike / SNKRS', websiteUrl: 'https://www.nike.com', logoUrl: '/stores/nike.png' },
   { slug: 'footlocker', name: 'Foot Locker', websiteUrl: 'https://www.footlocker.com', logoUrl: '/stores/footlocker.png' },
   { slug: 'hasbro', name: 'Hasbro', websiteUrl: 'https://www.hasbro.com', logoUrl: '/stores/hasbro.png' },
+  { slug: 'hasbropulse', name: 'Hasbro Pulse', websiteUrl: 'https://www.hasbropulse.com', logoUrl: '/stores/hasbropulse.png' },
   { slug: 'sony', name: 'Sony', websiteUrl: 'https://www.sony.com', logoUrl: '/stores/sony.png' },
   { slug: 'google', name: 'Google Store', websiteUrl: 'https://store.google.com', logoUrl: '/stores/google.png' },
   { slug: 'samsung', name: 'Samsung', websiteUrl: 'https://www.samsung.com', logoUrl: '/stores/samsung.png' },
