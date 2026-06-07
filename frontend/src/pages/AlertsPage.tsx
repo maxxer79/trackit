@@ -64,7 +64,7 @@ export default function AlertsPage() {
       ) : !alerts || alerts.length === 0 ? (
         <div className="card p-16 text-center">
           <p className="text-5xl mb-4">🔔</p>
-          <h2 className="text-title1 font-bold text-white mb-2">No alerts yet</h2>
+          <h2 className="text-title1 font-bold text-dark-label1 mb-2">No alerts yet</h2>
           <p className="text-subhead text-dark-label2 mb-6">
             Start tracking products and you'll be notified here when they come in stock.
           </p>
@@ -99,13 +99,13 @@ export default function AlertsPage() {
                     <div>
                       <Link
                         to={`/product/${alert.productSlug}`}
-                        className="text-subhead font-semibold text-white hover:text-apple-blue transition-colors line-clamp-1"
+                        className="text-subhead font-semibold text-dark-label1 hover:text-apple-blue transition-colors line-clamp-1"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {alert.productName}
                       </Link>
                       <p className="text-footnote text-dark-label2 mt-0.5">
-                        Available at <strong className="text-white">{alert.storeName}</strong>
+                        Available at <strong className="text-dark-label1">{alert.storeName}</strong>
                         {alert.price && <span className="text-apple-blue"> — ${alert.price.toFixed(2)}</span>}
                       </p>
                     </div>

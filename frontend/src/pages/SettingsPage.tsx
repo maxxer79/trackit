@@ -146,13 +146,13 @@ export default function SettingsPage() {
       <div className="space-y-4">
         {/* Account Info */}
         <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <h2 className="text-title2 font-bold text-white mb-4">Account</h2>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-4">Account</h2>
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-apple-blue flex items-center justify-center text-xl font-bold text-white">
               {user?.name?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div>
-              <p className="text-subhead font-semibold text-white">{user?.name}</p>
+              <p className="text-subhead font-semibold text-dark-label1">{user?.name}</p>
               <p className="text-footnote text-dark-label2">{user?.email}</p>
               <p className="text-caption2 text-dark-label3 mt-0.5">
                 {user?.role === 'ADMIN' ? '🛡 Admin' : '👤 User'} •{' '}
@@ -164,7 +164,7 @@ export default function SettingsPage() {
 
         {/* Appearance */}
         <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-          <h2 className="text-title2 font-bold text-white mb-4">Appearance</h2>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-4">Appearance</h2>
           <div className="flex gap-2">
             {(['dark', 'light', 'system'] as const).map((t) => (
               <button
@@ -173,7 +173,7 @@ export default function SettingsPage() {
                 className={`flex-1 py-2.5 rounded-apple text-footnote font-semibold capitalize transition-all ${
                   theme === t
                     ? 'bg-apple-blue text-white'
-                    : 'bg-dark-surface2 text-dark-label2 hover:text-white'
+                    : 'bg-dark-surface2 text-dark-label2 hover:text-dark-label1'
                 }`}
               >
                 {t === 'dark' ? '🌙 Dark' : t === 'light' ? '☀️ Light' : '⚙️ System'}
@@ -184,7 +184,7 @@ export default function SettingsPage() {
 
         {/* Notification Channels */}
         <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <h2 className="text-title2 font-bold text-white mb-1">Notification Channels</h2>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-1">Notification Channels</h2>
           <p className="text-footnote text-dark-label2 mb-5">Choose how you want to be alerted when items come in stock</p>
 
           <div className="space-y-4">
@@ -276,7 +276,7 @@ export default function SettingsPage() {
 
         {/* AutoBuy */}
         <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <h2 className="text-title2 font-bold text-white mb-1">AutoBuy</h2>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-1">AutoBuy</h2>
           <p className="text-footnote text-dark-label2 mb-5">
             Automatically attempt to purchase tracked items when they come in stock.{' '}
             <span className="text-apple-orange">Use with caution.</span>
@@ -363,7 +363,7 @@ function ToggleRow({
     <div className="flex items-center gap-3">
       <span className="text-xl w-8 shrink-0">{icon}</span>
       <div className="flex-1">
-        <p className="text-subhead font-semibold text-white">{label}</p>
+        <p className="text-subhead font-semibold text-dark-label1">{label}</p>
         <p className="text-caption1 text-dark-label2">{description}</p>
       </div>
       <button

@@ -50,7 +50,7 @@ export default function DashboardPage() {
             {
               label: 'Tracking',
               value: tracking.length,
-              color: 'text-white',
+              color: 'text-dark-label1',
             },
             {
               label: 'In Stock',
@@ -79,7 +79,7 @@ export default function DashboardPage() {
       ) : !tracking || tracking.length === 0 ? (
         <div className="card p-16 text-center">
           <p className="text-5xl mb-4">📦</p>
-          <h2 className="text-title1 font-bold text-white mb-2">Nothing tracked yet</h2>
+          <h2 className="text-title1 font-bold text-dark-label1 mb-2">Nothing tracked yet</h2>
           <p className="text-subhead text-dark-label2 mb-6">
             Browse products and hit the ★ to start tracking availability.
           </p>
@@ -125,7 +125,7 @@ export default function DashboardPage() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <Link to={`/product/${item.product.slug}`}>
-                      <h3 className="text-subhead font-semibold text-white hover:text-apple-blue transition-colors line-clamp-1">
+                      <h3 className="text-subhead font-semibold text-dark-label1 hover:text-apple-blue transition-colors line-clamp-1">
                         {item.product.name}
                       </h3>
                     </Link>
@@ -155,7 +155,7 @@ export default function DashboardPage() {
                             className={`text-caption2 px-2 py-0.5 rounded-pill border font-medium transition-colors ${
                               s.status === 'IN_STOCK' || s.status === 'LIMITED'
                                 ? 'border-apple-green/30 text-apple-green hover:bg-apple-green/10'
-                                : 'border-dark-separator text-dark-label3 hover:text-white'
+                                : 'border-dark-separator text-dark-label3 hover:text-dark-label1'
                             }`}
                           >
                             {s.storeName}

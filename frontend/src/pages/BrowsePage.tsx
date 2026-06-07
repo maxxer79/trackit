@@ -56,7 +56,7 @@ export default function BrowsePage() {
               'px-5 py-2.5 text-footnote font-semibold capitalize transition-all border-b-2 -mb-px',
               tab === t
                 ? 'border-apple-blue text-apple-blue'
-                : 'border-transparent text-dark-label2 hover:text-white'
+                : 'border-transparent text-dark-label2 hover:text-dark-label1'
             )}
           >
             {t === 'new' ? 'Recent' : t === 'featured' ? '⭐ Featured' : 'All'}
@@ -95,7 +95,7 @@ export default function BrowsePage() {
             'px-4 py-2 rounded-pill text-footnote font-semibold transition-all',
             inStock
               ? 'bg-apple-green text-black'
-              : 'bg-dark-surface2 text-dark-label2 border border-dark-separator hover:bg-dark-surface3 hover:text-white'
+              : 'bg-dark-surface2 text-dark-label2 border border-dark-separator hover:bg-dark-surface3 hover:text-dark-label1'
           )}
         >
           In Stock Only
@@ -109,7 +109,7 @@ export default function BrowsePage() {
               'px-4 py-2 rounded-pill text-footnote font-semibold capitalize transition-all',
               category === cat
                 ? 'bg-apple-blue text-white'
-                : 'bg-dark-surface2 text-dark-label2 border border-dark-separator hover:bg-dark-surface3 hover:text-white'
+                : 'bg-dark-surface2 text-dark-label2 border border-dark-separator hover:bg-dark-surface3 hover:text-dark-label1'
             )}
           >
             {cat}
@@ -135,7 +135,7 @@ export default function BrowsePage() {
       ) : data?.data.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-4xl mb-4">🔍</p>
-          <p className="text-title2 font-semibold text-white mb-2">No products found</p>
+          <p className="text-title2 font-semibold text-dark-label1 mb-2">No products found</p>
           <p className="text-subhead text-dark-label2">Try a different search or filter</p>
         </div>
       ) : (
@@ -168,7 +168,7 @@ export default function BrowsePage() {
                     'w-9 h-9 rounded-apple text-footnote font-semibold transition-all',
                     p === page
                       ? 'bg-apple-blue text-white'
-                      : 'bg-dark-surface2 text-dark-label2 hover:bg-dark-surface3 hover:text-white'
+                      : 'bg-dark-surface2 text-dark-label2 hover:bg-dark-surface3 hover:text-dark-label1'
                   )}
                 >
                   {p}

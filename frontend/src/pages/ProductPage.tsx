@@ -40,7 +40,7 @@ function Dropdown({ label, sublabel, options, value, onChange }: {
         className="w-full flex items-center justify-between px-4 py-2.5 rounded-apple bg-dark-surface2 border border-dark-separator hover:bg-dark-surface3 transition-colors">
         <div className="text-left">
           <p className="text-caption2 text-dark-label3">{label}</p>
-          <p className="text-footnote text-white font-medium">{selected?.label ?? sublabel}</p>
+          <p className="text-footnote text-dark-label1 font-medium">{selected?.label ?? sublabel}</p>
         </div>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={clsx('text-dark-label3 transition-transform', open && 'rotate-180')}>
           <path d="M5 7L1 3h8L5 7z"/>
@@ -53,7 +53,7 @@ function Dropdown({ label, sublabel, options, value, onChange }: {
             {options.map(opt => (
               <button key={String(opt.value)} onClick={() => { onChange(opt.value); setOpen(false); }}
                 className={clsx('w-full text-left px-4 py-2.5 text-footnote transition-colors',
-                  opt.value === value ? 'text-apple-blue bg-apple-blue/10' : 'text-white hover:bg-dark-surface2')}>
+                  opt.value === value ? 'text-apple-blue bg-apple-blue/10' : 'text-dark-label1 hover:bg-dark-surface2')}>
                 {opt.label}
               </button>
             ))}
@@ -130,7 +130,7 @@ export default function ProductPage() {
   if (!product) return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
       <p className="text-4xl">🔍</p>
-      <h2 className="text-headline font-bold text-white">Product not found</h2>
+      <h2 className="text-headline font-bold text-dark-label1">Product not found</h2>
       <Link to="/browse" className="btn-primary">Back to Browse</Link>
     </div>
   );
@@ -161,9 +161,9 @@ export default function ProductPage() {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-footnote text-dark-label2 mb-6">
-        <Link to="/browse" className="hover:text-white transition-colors">Browse</Link>
+        <Link to="/browse" className="hover:text-dark-label1 transition-colors">Browse</Link>
         <span>/</span><span className="capitalize">{product.category}</span>
-        <span>/</span><span className="text-white truncate max-w-[200px]">{product.name}</span>
+        <span>/</span><span className="text-dark-label1 truncate max-w-[200px]">{product.name}</span>
       </nav>
 
       {/* Hero */}
@@ -175,7 +175,7 @@ export default function ProductPage() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-footnote text-apple-blue font-semibold capitalize mb-1">{product.category}</p>
-          <h1 className="text-title2 font-bold text-white leading-tight mb-2">{product.name}</h1>
+          <h1 className="text-title2 font-bold text-dark-label1 leading-tight mb-2">{product.name}</h1>
           {product.description && <p className="text-footnote text-dark-label2 leading-relaxed">{product.description}</p>}
           {(product.trackingCount ?? 0) > 0 && (
             <p className="text-caption2 text-dark-label3 mt-1">{(product.trackingCount ?? 0).toLocaleString()} people tracking</p>
@@ -202,7 +202,7 @@ export default function ProductPage() {
       {inStockStatuses.some((s: any) => s.price) && (
         <div className="mb-4">
           <p className="text-caption2 text-dark-label3 mb-0.5">Price Range</p>
-          <p className="text-title2 font-bold text-white">
+          <p className="text-title2 font-bold text-dark-label1">
             ${Math.min(...inStockStatuses.filter((s: any) => s.price).map((s: any) => s.price!)).toFixed(2)}
             {' – '}
             ${Math.max(...inStockStatuses.filter((s: any) => s.price).map((s: any) => s.price!)).toFixed(2)}
@@ -274,7 +274,7 @@ export default function ProductPage() {
                 <StoreLogo logoUrl={s.storeLogo} domain={s.storeSlug ? `${s.storeSlug}.com` : null} name={s.storeName ?? ''} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-subhead font-semibold text-white">{s.storeName}</p>
+                    <p className="text-subhead font-semibold text-dark-label1">{s.storeName}</p>
                     {isSearchLink && (
                       <span className="text-caption2 text-dark-label3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                         <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -329,14 +329,14 @@ export default function ProductPage() {
       <AnimatePresence>
         {showStockLog && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-6 overflow-hidden">
-            <h2 className="text-title2 font-bold text-white mb-3">Latest stock times</h2>
+            <h2 className="text-title2 font-bold text-dark-label1 mb-3">Latest stock times</h2>
             {(stockHistory as any[]).length === 0
               ? <div className="card p-6 text-center text-dark-label2 text-footnote">No history yet. Builds as the scraper runs.</div>
               : <div className="card divide-y divide-dark-separator">
                   {(stockHistory as any[]).map((event: any) => (
                     <div key={event.id} className="flex items-start justify-between px-4 py-3.5">
                       <div className="flex-1 min-w-0 pr-4">
-                        <p className="text-subhead font-semibold text-white">{event.storeName}</p>
+                        <p className="text-subhead font-semibold text-dark-label1">{event.storeName}</p>
                         {event.productUrl && (
                           <a href={event.productUrl} target="_blank" rel="noopener noreferrer" className="text-caption1 text-apple-blue hover:underline truncate block">
                             {product.name}
@@ -359,14 +359,14 @@ export default function ProductPage() {
 
       {/* Comments */}
       <div>
-        <h2 className="text-title2 font-bold text-white mb-4">COMMENTS</h2>
+        <h2 className="text-title2 font-bold text-dark-label1 mb-4">COMMENTS</h2>
         <div className="flex gap-2 mb-6">
           <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && commentText.trim() && user) postComment.mutate(commentText); }}
             placeholder={user ? 'Add a comment...' : 'Sign in to comment'}
             disabled={!user || postComment.isPending}
             className="input flex-1" maxLength={1000} />
-          <button onClick={() => refetchComments()} className="btn-icon w-10 h-10 text-dark-label2 hover:text-white shrink-0" title="Refresh">
+          <button onClick={() => refetchComments()} className="btn-icon w-10 h-10 text-dark-label2 hover:text-dark-label1 shrink-0" title="Refresh">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 7A5 5 0 1 1 7 2"/><path d="M12 2v3h-3"/>
             </svg>
