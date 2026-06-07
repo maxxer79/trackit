@@ -1,4 +1,5 @@
 import { BaseScraper, StockResult } from './base';
+import logger from '../utils/logger';
 
 export class TargetScraper extends BaseScraper {
   constructor() {
@@ -10,22 +11,25 @@ export class TargetScraper extends BaseScraper {
       const tcin = storeProductId || productUrl.match(/A-(\d+)/)?.[1];
 
       if (tcin) {
-        // Target Redsky API
+        // Target Redsky API — send JSON Accept + browser-like Referer so Target doesn't block us
         const apiUrl = `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1?tcin=${tcin}&is_bot=false`;
         try {
-          const response = await this.client.get(apiUrl);
+          const response = await this.client.get(apiUrl, {
+            headers: {
+              Accept: 'application/json',
+              Referer: 'https://www.target.com/',
+              Origin: 'https://www.target.com',
+            },
+          });
           const product = response.data?.data?.product;
           const fulfillment = product?.fulfillment;
           const availability = fulfillment?.shipping_options?.availability_status;
           const price = product?.price?.current_retail;
 
-          // DEBUG: log raw fulfillment so we can see what Target actually returns
-          console.log('[Target] fulfillment:', JSON.stringify(fulfillment, null, 2));
+          logger.info(`[Target TCIN:${tcin}] availability=${availability} preorder=${JSON.stringify(fulfillment?.preorder)}`);
 
-          // Check preorder state — if it's a preorder product, availability_status
-          // can incorrectly read IN_STOCK even when the button is disabled.
-          // is_available_for_preorder = true  → PREORDER (button works)
-          // is_available_for_preorder = false → OUT_OF_STOCK (button disabled)
+          // is_preorder=true + is_available_for_preorder=true  → PREORDER (button clickable)
+          // is_preorder=true + is_available_for_preorder=false → OUT_OF_STOCK (button disabled)
           const isPreorder: boolean =
             fulfillment?.preorder?.is_preorder === true ||
             availability === 'PREORDER';
@@ -56,20 +60,38 @@ export class TargetScraper extends BaseScraper {
             price: price ? parseFloat(price) : undefined,
             productUrl,
           };
-        } catch {
+        } catch (apiErr: any) {
+          logger.warn(`[Target] Redsky API failed for TCIN ${tcin}, falling back to HTML: ${apiErr.message}`);
           // Fall through to HTML
         }
       }
 
+      // HTML fallback — check disabled state so pre-order with locked button → OUT_OF_STOCK
       const html = await this.fetchPage(productUrl);
       const $ = this.loadHtml(html);
 
-      const addToCart = $('button[data-test="addToCartButton"]').length > 0;
       const outOfStock = $('[data-test="outOfStockMessage"]').length > 0;
+      const addToCartBtn = $('button[data-test="addToCartButton"]');
+      const btnPresent = addToCartBtn.length > 0;
+      const btnDisabled = addToCartBtn.is('[disabled]') || addToCartBtn.attr('disabled') !== undefined;
+
+      logger.info(`[Target HTML] btnPresent=${btnPresent} btnDisabled=${btnDisabled} outOfStock=${outOfStock}`);
+
+      let status: StockResult['status'];
+      if (outOfStock) {
+        status = 'OUT_OF_STOCK';
+      } else if (btnPresent && !btnDisabled) {
+        status = 'IN_STOCK';
+      } else if (btnPresent && btnDisabled) {
+        // Button exists but is disabled → pre-order locked or unavailable
+        status = 'OUT_OF_STOCK';
+      } else {
+        status = 'UNKNOWN';
+      }
 
       return {
         storeSlug: this.storeSlug,
-        status: addToCart ? 'IN_STOCK' : outOfStock ? 'OUT_OF_STOCK' : 'UNKNOWN',
+        status,
         productUrl,
       };
     } catch (error: any) {
