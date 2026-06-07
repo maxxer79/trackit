@@ -77,6 +77,11 @@ export default function ProductPage() {
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const qc = useQueryClient();
 
+  const [liveStatuses, setLiveStatuses] = useState<Record<string, {
+    status: string; price?: number | null; loading: boolean; lastCheckedAt?: string;
+  }>>({});
+  const [isLiveChecking, setIsLiveChecking] = useState(false);
+
   const { data: comments = [], refetch: refetchComments } = useQuery({
     queryKey: ['comments', slug],
     queryFn: async () => { const { data } = await api.get(`/products/${slug}/comments`); return data; },
@@ -99,6 +104,49 @@ export default function ProductPage() {
     mutationFn: async (id: string) => api.delete(`/products/comments/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['comments', slug] }); toast.success('Comment deleted'); },
   });
+
+  // Auto-scrape on page load: stream live status for each retailer
+  useEffect(() => {
+    if (!product) return;
+    const initial: Record<string, any> = {};
+    (product.stockStatuses ?? []).forEach((s: any) => {
+      if (s.storeProductId) {
+        initial[s.storeProductId] = { status: s.status, price: s.price, loading: true };
+      }
+    });
+    setLiveStatuses(initial);
+    setIsLiveChecking(true);
+
+    const apiBase = import.meta.env.VITE_API_URL || '/api';
+    const eventSource = new EventSource(`${apiBase}/products/${slug}/live-check`);
+
+    eventSource.addEventListener('result', (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      setLiveStatuses(prev => ({
+        ...prev,
+        [data.storeProductId]: { status: data.status, price: data.price, loading: false, lastCheckedAt: data.lastCheckedAt },
+      }));
+    });
+
+    eventSource.addEventListener('done', () => {
+      setIsLiveChecking(false);
+      eventSource.close();
+    });
+
+    eventSource.onerror = () => {
+      setIsLiveChecking(false);
+      setLiveStatuses(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(k => {
+          if (updated[k].loading) updated[k] = { ...updated[k], loading: false };
+        });
+        return updated;
+      });
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTrackToggle = async () => {
     if (!user) { toast.error('Sign in to track this product'); return; }
@@ -137,17 +185,23 @@ export default function ProductPage() {
 
   const allStatuses: any[] = product.stockStatuses ?? [];
 
+  // Merge live status into each row (once live data arrives)
+  const mergedStatuses = allStatuses.map((s: any) => {
+    const live = liveStatuses[s.storeProductId];
+    if (!live || live.loading) return { ...s, _live: live };
+    return { ...s, status: live.status, price: live.price ?? s.price, lastCheckedAt: live.lastCheckedAt ?? s.lastCheckedAt, _live: live };
+  });
+
   // Build store filter options from available stores
   const storeOptions = [
     { label: 'All stores', value: null },
-    ...Array.from(new Set(allStatuses.map((s: any) => s.storeName))).map(name => ({ label: name, value: name })),
+    ...Array.from(new Set(mergedStatuses.map((s: any) => s.storeName))).map(name => ({ label: name, value: name })),
   ];
 
   // Apply filters
-  const filteredStatuses = allStatuses.filter((s: any) => {
+  const filteredStatuses = mergedStatuses.filter((s: any) => {
     if (storeFilter && s.storeName !== storeFilter) return false;
     if (priceLimit !== null) {
-      // If in stock and no price, or price exceeds limit — hide
       if (s.status === 'IN_STOCK' || s.status === 'LIMITED') {
         if (s.price && s.price > priceLimit) return false;
       }
@@ -155,7 +209,7 @@ export default function ProductPage() {
     return true;
   });
 
-  const inStockStatuses = allStatuses.filter((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED');
+  const inStockStatuses = mergedStatuses.filter((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED');
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
@@ -246,6 +300,17 @@ export default function ProductPage() {
         </div>
       )}
 
+      {/* Live-check status indicator */}
+      {isLiveChecking && (
+        <div className="flex items-center gap-2 mb-3 text-caption1 text-dark-label3">
+          <svg className="animate-spin w-3.5 h-3.5 shrink-0 text-apple-blue" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.37 0 0 5.37 0 12h4z"/>
+          </svg>
+          Checking availability live…
+        </div>
+      )}
+
       {/* Store availability list */}
       <div className="card divide-y divide-dark-separator mb-4">
         {filteredStatuses.length === 0
@@ -253,7 +318,10 @@ export default function ProductPage() {
               {allStatuses.length === 0 ? 'No stores added yet. Admin can add store links.' : 'No stores match your filters.'}
             </div>
           : filteredStatuses.map((s: any, i: number) => {
+            const live = s._live as { status: string; price?: number | null; loading: boolean; lastCheckedAt?: string } | undefined;
+            const isLoading = !!live?.loading;
             const isInStock = s.status === 'IN_STOCK' || s.status === 'LIMITED';
+            const isPreorder = s.status === 'PREORDER';
             // Direct product URL takes priority; fall back to retailer search
             const searchHref = s.storeSearchUrl
               ? s.storeSearchUrl.replace('{query}', encodeURIComponent(product.name))
@@ -284,24 +352,43 @@ export default function ProductPage() {
                       </span>
                     )}
                   </div>
-                  {s.price && <p className="text-caption1 text-apple-blue font-semibold">${s.price.toFixed(2)}</p>}
+                  {s.price != null && <p className="text-caption1 text-apple-blue font-semibold">${Number(s.price).toFixed(2)}</p>}
                   {s.lastCheckedAt && (
                     <p className="text-caption2 text-dark-label3">
-                      Updated {formatDistanceToNow(new Date(s.lastCheckedAt), { addSuffix: true })}
+                      {isLoading ? 'Checking now…' : `Updated ${formatDistanceToNow(new Date(s.lastCheckedAt), { addSuffix: true })}`}
                     </p>
+                  )}
+                  {!s.lastCheckedAt && isLoading && (
+                    <p className="text-caption2 text-dark-label3">Checking now…</p>
                   )}
                 </div>
                 <div className={clsx(
-                  'px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[120px] text-center transition-colors',
-                  isInStock
-                    ? 'bg-apple-green text-white'
-                    : !s.lastCheckedAt
-                      ? 'border border-dark-separator text-dark-label3'
-                      : isSearchLink
-                        ? 'border border-dark-separator text-dark-label2 group-hover:border-apple-blue/50 group-hover:text-apple-blue'
-                        : 'border border-dark-separator text-dark-label2'
+                  'px-4 py-2 rounded-apple text-footnote font-bold shrink-0 min-w-[120px] text-center transition-colors flex items-center justify-center gap-1.5',
+                  isLoading
+                    ? 'border border-dark-separator text-dark-label3'
+                    : isInStock
+                      ? 'bg-apple-green text-white'
+                      : isPreorder
+                        ? 'bg-apple-orange text-white'
+                        : !s.lastCheckedAt
+                          ? 'border border-dark-separator text-dark-label3'
+                          : isSearchLink
+                            ? 'border border-dark-separator text-dark-label2 group-hover:border-apple-blue/50 group-hover:text-apple-blue'
+                            : 'border border-dark-separator text-dark-label2'
                 )}>
-                  {isInStock ? 'IN STOCK' : !s.lastCheckedAt ? 'NOT CHECKED' : isSearchLink ? 'SEARCH →' : 'OUT OF STOCK'}
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.37 0 0 5.37 0 12h4z"/>
+                      </svg>
+                      <span>CHECKING</span>
+                    </>
+                  ) : isInStock ? 'IN STOCK'
+                    : isPreorder ? 'PRE-ORDER'
+                    : !s.lastCheckedAt ? 'NOT CHECKED'
+                    : isSearchLink ? 'SEARCH →'
+                    : 'OUT OF STOCK'}
                 </div>
               </motion.a>
             );

@@ -56,6 +56,7 @@ stockCheckerQueue.process(
             where: { id: listing.id },
             data: {
               inStock: isNowInStock,
+              stockStatus: result.status,
               price: result.price ?? listing.price,
               lastChecked: new Date(),
               checkCount: { increment: 1 },

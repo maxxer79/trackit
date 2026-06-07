@@ -671,7 +671,7 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
 
     await prisma.storeProduct.update({
       where: { id: storeProductId },
-      data: { inStock: nowInStock, lastChecked: new Date(), checkCount: { increment: 1 } },
+      data: { inStock: nowInStock, stockStatus: status, price: scraperResult.price ?? sp.price, lastChecked: new Date(), checkCount: { increment: 1 } },
     });
 
     if (wasInStock !== nowInStock) {

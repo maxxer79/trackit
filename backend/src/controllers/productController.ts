@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
 import { STORE_SEARCH_URLS } from '../data/searchUrls';
+import { getScraperForStore } from '../scrapers/index';
 
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -43,10 +44,11 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
       trackingCount: p._count?.trackings ?? 0,
       stockStatuses: p.storeListings?.map((sl: any) => ({
         storeId: sl.storeId,
+        storeProductId: sl.id,
         storeName: sl.store?.name,
         storeSlug: sl.store?.slug,
         storeLogo: sl.store?.logoUrl,
-        status: sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+        status: sl.stockStatus ?? (sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK'),
         price: sl.price,
         productUrl: sl.url,
         lastCheckedAt: sl.lastChecked,
@@ -90,7 +92,7 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
         storeName: sl.store?.name,
         storeSlug: sl.store?.slug,
         storeLogo: sl.store?.logoUrl,
-        status: sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+        status: sl.stockStatus ?? (sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK'),
         price: sl.price,
         productUrl: sl.url,
         lastCheckedAt: sl.lastChecked,
@@ -164,5 +166,78 @@ export const getStores = async (_req: Request, res: Response): Promise<void> => 
     res.json(stores);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch stores' });
+  }
+};
+
+export const liveCheckProduct = async (req: Request, res: Response): Promise<void> => {
+  const { slug } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+
+  try {
+    const product = await prisma.product.findUnique({
+      where: { slug },
+      include: {
+        storeListings: {
+          include: { store: true },
+          where: { isActive: true },
+        },
+      },
+    });
+
+    if (!product) {
+      res.write('event: error\ndata: {"message":"Product not found"}\n\n');
+      res.end();
+      return;
+    }
+
+    const promises = product.storeListings.map(async (sp: any) => {
+      try {
+        const scraper = getScraperForStore(sp.store.slug);
+        const result = await scraper.checkStock(sp.url, sp.id);
+        const nowInStock = result.status === 'IN_STOCK' || result.status === 'LIMITED';
+
+        await prisma.storeProduct.update({
+          where: { id: sp.id },
+          data: {
+            inStock: nowInStock,
+            stockStatus: result.status,
+            price: result.price ?? sp.price,
+            lastChecked: new Date(),
+            checkCount: { increment: 1 },
+          },
+        });
+
+        const payload = {
+          storeProductId: sp.id,
+          storeSlug: sp.store.slug,
+          storeName: sp.store.name,
+          status: result.status,
+          price: result.price ?? sp.price,
+          lastCheckedAt: new Date().toISOString(),
+        };
+        res.write(`event: result\ndata: ${JSON.stringify(payload)}\n\n`);
+      } catch (err: any) {
+        logger.error(`liveCheck scrape error for ${sp.store.slug}`, err);
+        res.write(`event: result\ndata: ${JSON.stringify({
+          storeProductId: sp.id,
+          storeSlug: sp.store.slug,
+          storeName: sp.store.name,
+          status: 'UNKNOWN',
+        })}\n\n`);
+      }
+    });
+
+    await Promise.allSettled(promises);
+    res.write('event: done\ndata: {}\n\n');
+    res.end();
+  } catch (error) {
+    logger.error('liveCheckProduct error', error);
+    res.write('event: error\ndata: {"message":"Internal server error"}\n\n');
+    res.end();
   }
 };

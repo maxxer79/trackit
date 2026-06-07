@@ -85,6 +85,7 @@ model StoreProduct {
   price       Float?
   currency    String    @default("USD")
   inStock     Boolean   @default(false)
+  stockStatus String?   // IN_STOCK | OUT_OF_STOCK | PREORDER | LIMITED | UNKNOWN
   stockLevel  Int?
   isActive    Boolean   @default(true)
   lastChecked DateTime?
