@@ -27,10 +27,10 @@ export default function AdminPage() {
     ? [
         { label: 'Total Users', value: stats.totalUsers, icon: '👥', color: 'text-apple-blue', link: '/admin/users' },
         { label: 'Active Users', value: stats.activeUsers, icon: '✅', color: 'text-apple-green', link: '/admin/users' },
-        { label: 'Total Products', value: stats.totalProducts, icon: '📦', color: 'text-white', link: '/admin/products' },
+        { label: 'Total Products', value: stats.totalProducts, icon: '📦', color: 'text-dark-label1', link: '/admin/products' },
         { label: 'Alerts Today', value: stats.alertsToday, icon: '🔔', color: 'text-apple-orange', link: '/admin/logs' },
         { label: 'Scraper Errors', value: stats.scraperErrors, icon: '⚠️', color: 'text-apple-red', link: '/admin/logs' },
-        { label: 'Total Alerts Sent', value: stats.totalAlerts, icon: '📨', color: 'text-white', link: '/admin/logs' },
+        { label: 'Total Alerts Sent', value: stats.totalAlerts, icon: '📨', color: 'text-dark-label1', link: '/admin/logs' },
       ]
     : [];
 
@@ -75,7 +75,7 @@ export default function AdminPage() {
               <Link to={link} className="card p-6 block hover:bg-dark-surface2 transition-colors group">
                 <div className="flex items-start justify-between mb-2">
                   <span className="text-2xl">{icon}</span>
-                  <svg className="w-4 h-4 text-dark-label3 group-hover:text-white transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg className="w-4 h-4 text-dark-label3 group-hover:text-dark-label1 transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 8h10M9 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
@@ -88,7 +88,7 @@ export default function AdminPage() {
       )}
 
       {/* Quick links */}
-      <h2 className="text-title2 font-bold text-white mb-4">Management</h2>
+      <h2 className="text-title2 font-bold text-dark-label1 mb-4">Management</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { to: '/admin/users', icon: '👥', title: 'Users', desc: 'Manage accounts & limits' },
@@ -104,7 +104,7 @@ export default function AdminPage() {
           >
             <span className="text-3xl">{icon}</span>
             <div>
-              <p className="text-subhead font-semibold text-white group-hover:text-apple-blue transition-colors">{title}</p>
+              <p className="text-subhead font-semibold text-dark-label1 group-hover:text-apple-blue transition-colors">{title}</p>
               <p className="text-caption1 text-dark-label2">{desc}</p>
             </div>
           </Link>
@@ -114,12 +114,12 @@ export default function AdminPage() {
       {/* Recent activity */}
       {stats?.recentAlerts && stats.recentAlerts.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-title2 font-bold text-white mb-4">Recent Alerts</h2>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-4">Recent Alerts</h2>
           <div className="card divide-y divide-dark-separator">
             {stats.recentAlerts.map((alert: any) => (
               <div key={alert.id} className="flex items-center justify-between px-5 py-3.5">
                 <div>
-                  <p className="text-footnote font-semibold text-white">{alert.productName}</p>
+                  <p className="text-footnote font-semibold text-dark-label1">{alert.productName}</p>
                   <p className="text-caption2 text-dark-label2">{alert.storeName} — {alert.userEmail}</p>
                 </div>
                 <span className="text-caption2 text-dark-label3">

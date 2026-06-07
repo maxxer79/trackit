@@ -268,7 +268,7 @@ export default function AdminProducts() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-subhead font-semibold text-white truncate">{p.name}</p>
+                  <p className="text-subhead font-semibold text-dark-label1 truncate">{p.name}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-caption2 text-dark-label3 capitalize">{p.category}</span>
                     <StatusBadge status={bestStatus} size="sm" />
@@ -283,7 +283,7 @@ export default function AdminProducts() {
                   <Link
                     to={`/product/${p.slug}`}
                     target="_blank"
-                    className="btn-icon w-8 h-8 text-dark-label2 hover:text-white"
+                    className="btn-icon w-8 h-8 text-dark-label2 hover:text-dark-label1"
                     title="View product"
                   >
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -440,7 +440,7 @@ export default function AdminProducts() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-subhead font-semibold text-white">Active</p>
+              <p className="text-subhead font-semibold text-dark-label1">Active</p>
               <p className="text-caption1 text-dark-label2">Inactive products are hidden from browse</p>
             </div>
             <button
@@ -479,7 +479,7 @@ export default function AdminProducts() {
                   <div key={s.storeId ?? s.storeName} className="flex items-center gap-3 px-3 py-2.5 rounded-apple bg-dark-surface2">
                     <StoreLogo logoUrl={s.storeLogo} domain={s.storeSlug ? `${s.storeSlug}.com` : null} name={s.storeName ?? ''} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-footnote font-semibold text-white">{s.storeName}</p>
+                      <p className="text-footnote font-semibold text-dark-label1">{s.storeName}</p>
                       {s.productUrl && (
                         <a href={s.productUrl} target="_blank" rel="noopener noreferrer"
                           className="text-caption2 text-apple-blue hover:underline truncate block">

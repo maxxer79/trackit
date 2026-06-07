@@ -57,10 +57,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
           >
             {title && (
               <div className="flex items-center justify-between px-6 py-4 border-b border-dark-separator">
-                <h2 className="text-title2 font-semibold text-white">{title}</h2>
+                <h2 className="text-title2 font-semibold text-dark-label1">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="btn-icon w-8 h-8 text-dark-label2 hover:text-white"
+                  className="btn-icon w-8 h-8 text-dark-label2 hover:text-dark-label1"
                   aria-label="Close"
                 >
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">

@@ -52,7 +52,7 @@ export default function Navbar() {
               <path d="M9 2L3 6.5v9h3.5v-5h5v5H15v-9L9 2z" fill="white" />
             </svg>
           </div>
-          <span className="text-title2 font-bold text-white hidden sm:block">TrackIt</span>
+          <span className="text-title2 font-bold text-dark-label1 hidden sm:block">TrackIt</span>
         </Link>
 
         {/* Desktop nav links */}
@@ -97,7 +97,7 @@ export default function Navbar() {
                 <div className="w-7 h-7 rounded-full bg-apple-blue flex items-center justify-center text-xs font-bold">
                   {(user.name || user.email)[0].toUpperCase()}
                 </div>
-                <span className="text-subhead font-medium text-white hidden sm:block">
+                <span className="text-subhead font-medium text-dark-label1 hidden sm:block">
                   {user.name || user.email.split('@')[0]}
                 </span>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className={clsx('text-dark-label2 transition-transform duration-150', menuOpen && 'rotate-180')}>
@@ -118,7 +118,7 @@ export default function Navbar() {
                     style={{ animation: 'fadeSlideDown 0.12s ease' }}
                   >
                       <div className="px-4 py-3 border-b border-dark-separator">
-                        <p className="text-footnote font-semibold text-white truncate">{user.name || 'User'}</p>
+                        <p className="text-footnote font-semibold text-dark-label1 truncate">{user.name || 'User'}</p>
                         <p className="text-caption1 text-dark-label2 truncate">{user.email}</p>
                       </div>
                       <div className="p-1">
@@ -130,7 +130,7 @@ export default function Navbar() {
                           <Link
                             key={to}
                             to={to}
-                            className="block px-3 py-2 text-subhead text-white hover:bg-dark-surface2 rounded-apple transition-colors"
+                            className="block px-3 py-2 text-subhead text-dark-label1 hover:bg-dark-surface2 rounded-apple transition-colors"
                           >
                             {label}
                           </Link>

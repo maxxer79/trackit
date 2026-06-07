@@ -47,7 +47,7 @@ export function useStockUpdates() {
           >
             <span className="text-xl mt-0.5">🟢</span>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white text-subhead truncate">{event.productName}</p>
+              <p className="font-semibold text-dark-label1 text-subhead truncate">{event.productName}</p>
               <p className="text-footnote text-apple-green mt-0.5">
                 {statusLabel} at {event.storeName}{priceStr}
               </p>

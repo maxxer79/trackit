@@ -108,10 +108,10 @@ export default function ProductCard({ product, index = 0 }: Props) {
               onClick={handleTrackToggle}
               className={clsx(
                 'absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center',
-                'transition-all duration-200 backdrop-blur-sm border',
+                'transition-all duration-200 border',
                 isTracked
                   ? 'bg-apple-blue text-white border-apple-blue shadow-glow-blue'
-                  : 'bg-dark-surface1/70 text-dark-label2 border-dark-separator hover:bg-dark-surface2 hover:text-white'
+                  : 'bg-dark-surface1/90 text-dark-label1 border-dark-separator shadow-[0_1px_4px_rgba(0,0,0,0.45)] hover:bg-dark-surface2 hover:text-dark-label1'
               )}
               title={isTracked ? 'Stop tracking' : 'Track this item'}
             >
@@ -124,7 +124,7 @@ export default function ProductCard({ product, index = 0 }: Props) {
           {/* Info */}
           <div className="p-3">
             <p className="text-footnote text-dark-label2 mb-1 capitalize">{product.category}</p>
-            <h3 className="text-subhead font-semibold text-white line-clamp-2 leading-snug mb-2">
+            <h3 className="text-subhead font-semibold text-dark-label1 line-clamp-2 leading-snug mb-2">
               {product.name}
             </h3>
 

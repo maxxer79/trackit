@@ -71,7 +71,7 @@ export default function AdminLogs() {
           {[
             { label: 'Success (page)', value: successCount, color: 'text-apple-green' },
             { label: 'Errors (page)', value: errorCount, color: 'text-apple-red' },
-            { label: 'Avg Duration', value: avgDuration ? `${Math.round(avgDuration)}ms` : '—', color: 'text-white' },
+            { label: 'Avg Duration', value: avgDuration ? `${Math.round(avgDuration)}ms` : '—', color: 'text-dark-label1' },
           ].map(({ label, value, color }) => (
             <div key={label} className="card p-4 text-center">
               <p className={`text-title2 font-bold ${color}`}>{value}</p>
@@ -110,7 +110,7 @@ export default function AdminLogs() {
                     : s === 'blocked'
                     ? 'bg-apple-orange text-black'
                     : 'bg-apple-blue text-white'
-                  : 'bg-dark-surface2 text-dark-label2 border border-dark-separator hover:bg-dark-surface3 hover:text-white'
+                  : 'bg-dark-surface2 text-dark-label2 border border-dark-separator hover:bg-dark-surface3 hover:text-dark-label1'
               )}
             >
               {s || 'All'}
@@ -156,7 +156,7 @@ export default function AdminLogs() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-footnote font-semibold text-white">
+                  <p className="text-footnote font-semibold text-dark-label1">
                     {log.productSlug ?? '(unknown product)'}
                   </p>
                   <span className="text-caption2 text-dark-label3">@</span>

@@ -34,7 +34,7 @@ export default function StoreLogo({ logoUrl, domain, name, size = 'md', classNam
 
   if (!src || (failed && triedFallback)) {
     return (
-      <div className={`${sizeClasses[size]} rounded-full bg-dark-surface2 border border-dark-separator flex items-center justify-center font-bold text-white shrink-0 ${className}`}>
+      <div className={`${sizeClasses[size]} rounded-full bg-dark-surface2 border border-dark-separator flex items-center justify-center font-bold text-dark-label1 shrink-0 ${className}`}>
         {name?.[0]?.toUpperCase() ?? '?'}
       </div>
     );

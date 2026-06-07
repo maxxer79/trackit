@@ -474,8 +474,50 @@ async function checkEbayViaPuppeteer(url: string): Promise<'IN_STOCK' | 'OUT_OF_
   }
 }
 
+async function checkEbayViaFindingAPI(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
+  const appId = process.env.EBAY_APP_ID;
+  if (!appId) return 'UNKNOWN';
+
+  // Extract keywords from the eBay search URL
+  let keywords = '';
+  try {
+    const parsed = new URL(url);
+    keywords = parsed.searchParams.get('_nkw') || '';
+  } catch {}
+  if (!keywords) return 'UNKNOWN';
+
+  try {
+    const apiUrl =
+      `https://svcs.ebay.com/services/search/FindingService/v1` +
+      `?OPERATION-NAME=findItemsByKeywords` +
+      `&SERVICE-VERSION=1.0.0` +
+      `&SECURITY-APPNAME=${encodeURIComponent(appId)}` +
+      `&RESPONSE-DATA-FORMAT=JSON` +
+      `&keywords=${encodeURIComponent(keywords)}` +
+      `&itemFilter(0).name=ListingType&itemFilter(0).value=FixedPrice` +
+      `&paginationInput.entriesPerPage=5`;
+
+    logger.info(`[eBay] Finding API search: "${keywords}"`);
+    const response = await axios.get(apiUrl, { timeout: 10000 });
+    const data = response.data;
+
+    const searchResult = data?.findItemsByKeywordsResponse?.[0]?.searchResult?.[0];
+    const count = parseInt(searchResult?.['@count'] ?? '0', 10);
+    logger.info(`[eBay] Finding API found ${count} listing(s)`);
+    return count > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK';
+  } catch (err: any) {
+    logger.warn(`[eBay] Finding API failed: ${err.message}`);
+    return 'UNKNOWN';
+  }
+}
+
 async function checkEbay(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UNKNOWN'> {
-  // Try EbayScraper first (RSS → HTML, fast, no browser overhead)
+  // Try official eBay Finding API first (no bot detection, requires EBAY_APP_ID env var)
+  if (process.env.EBAY_APP_ID) {
+    const apiResult = await checkEbayViaFindingAPI(url);
+    if (apiResult !== 'UNKNOWN') return apiResult;
+  }
+  // Try EbayScraper (RSS → HTML, fast, no browser overhead)
   try {
     const scraper = getScraperForStore('ebay');
     const result = await scraper.checkStock(url);
@@ -484,7 +526,7 @@ async function checkEbay(url: string): Promise<'IN_STOCK' | 'OUT_OF_STOCK' | 'UN
   } catch (err: any) {
     logger.warn(`[eBay] Scraper failed: ${err.message}`);
   }
-  // Fall back to Puppeteer (real browser, bypasses eBay bot detection)
+  // Fall back to Puppeteer (real browser + stealth)
   logger.info('[eBay] Falling back to Puppeteer');
   return checkEbayViaPuppeteer(url);
 }

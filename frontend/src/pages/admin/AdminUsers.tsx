@@ -137,7 +137,7 @@ export default function AdminUsers() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-subhead font-semibold text-white truncate">{user.name}</p>
+                  <p className="text-subhead font-semibold text-dark-label1 truncate">{user.name}</p>
                   {user.role === 'ADMIN' && (
                     <span className="text-caption2 px-2 py-0.5 rounded-pill bg-apple-orange/15 text-apple-orange font-semibold">Admin</span>
                   )}
@@ -149,7 +149,7 @@ export default function AdminUsers() {
               </div>
 
               <div className="hidden sm:block text-right shrink-0">
-                <p className="text-footnote font-semibold text-white">
+                <p className="text-footnote font-semibold text-dark-label1">
                   {user.trackingLimit === -1 ? '∞' : `${user._count?.trackings ?? 0}/${user.trackingLimit}`}
                 </p>
                 <p className="text-caption2 text-dark-label3">tracking</p>
@@ -214,7 +214,7 @@ export default function AdminUsers() {
             <div className="flex gap-2">
               {['USER', 'ADMIN'].map((r) => (
                 <button key={r} onClick={() => setCreateForm(f => ({ ...f, role: r }))}
-                  className={`flex-1 py-2.5 rounded-apple text-footnote font-semibold transition-all ${createForm.role === r ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-white'}`}>
+                  className={`flex-1 py-2.5 rounded-apple text-footnote font-semibold transition-all ${createForm.role === r ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-dark-label1'}`}>
                   {r === 'ADMIN' ? '🛡 Admin' : '👤 User'}
                 </button>
               ))}
@@ -225,7 +225,7 @@ export default function AdminUsers() {
             <div className="flex gap-2">
               {[1, 5, 10, 25, -1].map((v) => (
                 <button key={v} onClick={() => setCreateForm(f => ({ ...f, trackingLimit: String(v) }))}
-                  className={`text-caption2 px-2.5 py-1 rounded-apple font-semibold transition-all ${createForm.trackingLimit === String(v) ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-white'}`}>
+                  className={`text-caption2 px-2.5 py-1 rounded-apple font-semibold transition-all ${createForm.trackingLimit === String(v) ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-dark-label1'}`}>
                   {v === -1 ? '∞' : v}
                 </button>
               ))}
@@ -252,7 +252,7 @@ export default function AdminUsers() {
             <div className="flex gap-2">
               {['USER', 'ADMIN'].map((r) => (
                 <button key={r} onClick={() => setEditForm((f) => ({ ...f, role: r }))}
-                  className={`flex-1 py-2.5 rounded-apple text-footnote font-semibold transition-all ${editForm.role === r ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-white'}`}>
+                  className={`flex-1 py-2.5 rounded-apple text-footnote font-semibold transition-all ${editForm.role === r ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-dark-label1'}`}>
                   {r === 'ADMIN' ? '🛡 Admin' : '👤 User'}
                 </button>
               ))}
@@ -264,7 +264,7 @@ export default function AdminUsers() {
             <div className="flex gap-2 mt-2">
               {[1, 5, 10, 25, -1].map((v) => (
                 <button key={v} onClick={() => setEditForm((f) => ({ ...f, trackingLimit: String(v) }))}
-                  className={`text-caption2 px-2.5 py-1 rounded-apple font-semibold transition-all ${editForm.trackingLimit === String(v) ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-white'}`}>
+                  className={`text-caption2 px-2.5 py-1 rounded-apple font-semibold transition-all ${editForm.trackingLimit === String(v) ? 'bg-apple-blue text-white' : 'bg-dark-surface2 text-dark-label2 hover:text-dark-label1'}`}>
                   {v === -1 ? '∞ Unlimited' : v}
                 </button>
               ))}
@@ -272,7 +272,7 @@ export default function AdminUsers() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-subhead font-semibold text-white">Account Active</p>
+              <p className="text-subhead font-semibold text-dark-label1">Account Active</p>
               <p className="text-caption1 text-dark-label2">Suspended users cannot log in</p>
             </div>
             <button onClick={() => setEditForm((f) => ({ ...f, isActive: !f.isActive }))}

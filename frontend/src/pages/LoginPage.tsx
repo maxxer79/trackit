@@ -42,7 +42,7 @@ export default function LoginPage() {
               <path d="M9 2L3 6.5v9h3.5v-5h5v5H15v-9L9 2z" fill="white" />
             </svg>
           </div>
-          <h1 className="text-headline font-bold text-white">Sign In</h1>
+          <h1 className="text-headline font-bold text-dark-label1">Sign In</h1>
           <p className="text-subhead text-dark-label2 mt-1">Welcome back to TrackIt</p>
         </div>
 

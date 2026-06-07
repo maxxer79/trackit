@@ -132,7 +132,7 @@ export default function AdminStores() {
               <StoreLogo logoUrl={store.logoUrl} domain={store.domain} name={store.name} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-subhead font-semibold text-white truncate">{store.name}</p>
+                  <p className="text-subhead font-semibold text-dark-label1 truncate">{store.name}</p>
                   {!store.isActive && (
                     <span className="text-caption2 px-2 py-0.5 rounded-pill bg-dark-surface3 text-dark-label3 font-semibold">Inactive</span>
                   )}

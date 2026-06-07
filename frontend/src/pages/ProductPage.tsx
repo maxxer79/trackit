@@ -390,7 +390,7 @@ export default function ProductPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-footnote font-semibold text-white">{comment.user?.name ?? 'User'}</span>
+                      <span className="text-footnote font-semibold text-dark-label1">{comment.user?.name ?? 'User'}</span>
                       {comment.user?.role === 'ADMIN' && (
                         <span className="text-caption2 px-1.5 py-0.5 rounded bg-apple-orange/15 text-apple-orange font-semibold">Admin</span>
                       )}
