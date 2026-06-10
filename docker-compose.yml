@@ -47,6 +47,15 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── FlareSolverr (Cloudflare challenge solver) ──────────────────────────────
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: trackit_flaresolverr
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      TZ: America/New_York
+
   # ─── Backend API ─────────────────────────────────────────────────────────────
   backend:
     image: ghcr.io/maxxer79/trackit-backend:latest
@@ -54,7 +63,12 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://trackit:${POSTGRES_PASSWORD}@postgres:5432/trackit_db
+      # Discrete Redis vars — REDIS_URL breaks if the password contains @ : / # ?
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      FLARESOLVERR_URL: http://flaresolverr:8191
       NODE_ENV: production
       PORT: 3001
       FRONTEND_URL: ${FRONTEND_URL}

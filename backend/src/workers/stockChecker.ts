@@ -3,15 +3,45 @@ import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
 import { sendNotifications } from '../services/notifications';
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+/**
+ * Redis connection config. Prefers discrete REDIS_HOST/PORT/PASSWORD env
+ * vars over REDIS_URL — passwords with special characters (@ : / # ?)
+ * break URL parsing and caused "max retries per request" at startup,
+ * which silently killed all scheduled stock checks.
+ */
+function redisConfig() {
+  if (process.env.REDIS_HOST) {
+    return {
+      host: process.env.REDIS_HOST,
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD || undefined,
+    };
+  }
+  const url = process.env.REDIS_URL || 'redis://localhost:6379';
+  try {
+    const u = new URL(url);
+    return {
+      host: u.hostname || 'localhost',
+      port: parseInt(u.port || '6379'),
+      password: u.password ? decodeURIComponent(u.password) : undefined,
+    };
+  } catch {
+    return { host: 'localhost', port: 6379, password: undefined };
+  }
+}
 
-export const stockCheckerQueue = new Bull('stock-checker', REDIS_URL, {
+export const stockCheckerQueue = new Bull('stock-checker', {
+  redis: redisConfig(),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: 100,
     removeOnFail: 200,
   },
+});
+
+stockCheckerQueue.on('error', (err) => {
+  console.error('\u274c Stock checker queue (Redis) error:', err.message);
 });
 
 interface StockCheckJob {

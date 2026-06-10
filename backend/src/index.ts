@@ -19,6 +19,11 @@ import notificationRoutes from './routes/notifications';
 const app = express();
 const httpServer = http.createServer(app);
 
+// Running behind a reverse proxy (nginx frontend container) — trust the
+// first proxy hop so express-rate-limit sees real client IPs instead of
+// throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 // ─── Security & Middleware ─────────────────────────────────────────────────────
 
 app.use(helmet({
@@ -102,12 +107,23 @@ httpServer.listen(PORT, async () => {
   console.log(`🚀 TrackIt backend running on port ${PORT}`);
   console.log(`📡 Socket.io initialized`);
 
-  // Start stock checker worker and schedule all active products
-  try {
-    await scheduleAllProducts();
-  } catch (err: any) {
-    console.error('Failed to schedule products:', err.message);
-  }
+  // Start stock checker worker and schedule all active products.
+  // Retry on failure — if Redis isn't reachable at boot the scheduler
+  // silently dying means NO automatic stock checks ever run.
+  const trySchedule = async (attempt = 1): Promise<void> => {
+    try {
+      await scheduleAllProducts();
+      console.log('\u2705 Stock check scheduling active');
+    } catch (err: any) {
+      console.error(`Failed to schedule products (attempt ${attempt}/10):`, err.message);
+      if (attempt < 10) {
+        setTimeout(() => trySchedule(attempt + 1), 30000);
+      } else {
+        console.error('\u274c GAVE UP scheduling stock checks \u2014 check REDIS_HOST/REDIS_PASSWORD env vars!');
+      }
+    }
+  };
+  await trySchedule();
 });
 
 export default app;

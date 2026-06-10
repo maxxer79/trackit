@@ -8,12 +8,48 @@
  * All browser fetches are serialized through a single queue so concurrent
  * scrape jobs can't launch a pile of Chromium instances on the NAS.
  */
+import axios from 'axios';
 import logger from '../utils/logger';
 
 let queue: Promise<unknown> = Promise.resolve();
 
+/**
+ * FlareSolverr (https://github.com/FlareSolverr/FlareSolverr) is a
+ * self-hosted Cloudflare challenge solver. If FLARESOLVERR_URL is set
+ * (e.g. http://flaresolverr:8191), use it first — it gets past Cloudflare
+ * protection that defeats plain stealth Chromium (e.g. BigBadToyStore).
+ */
+async function fetchViaFlareSolverr(url: string, timeoutMs: number): Promise<string | null> {
+  const base = process.env.FLARESOLVERR_URL;
+  if (!base) return null;
+  try {
+    logger.info(`[FlareSolverr] Solving ${url}`);
+    const resp = await axios.post(
+      `${base.replace(/\/$/, '')}/v1`,
+      { cmd: 'request.get', url, maxTimeout: timeoutMs },
+      { timeout: timeoutMs + 15000, headers: { 'Content-Type': 'application/json' } }
+    );
+    const solution = resp.data?.solution;
+    if (resp.data?.status === 'ok' && solution?.response) {
+      logger.info(`[FlareSolverr] Got ${solution.response.length} bytes (HTTP ${solution.status}) for ${url}`);
+      return solution.response as string;
+    }
+    logger.warn(`[FlareSolverr] No solution for ${url}: ${resp.data?.message ?? 'unknown'}`);
+    return null;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`[FlareSolverr] Failed for ${url}: ${msg}`);
+    return null;
+  }
+}
+
 export function fetchRenderedHtml(url: string, timeoutMs = 40000): Promise<string | null> {
   const run = async (): Promise<string | null> => {
+    // Strategy 1: FlareSolverr (if configured) — best against Cloudflare
+    const solved = await fetchViaFlareSolverr(url, timeoutMs);
+    if (solved) return solved;
+
+    // Strategy 2: local stealth Chromium
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let browser: any;
     try {
