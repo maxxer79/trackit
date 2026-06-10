@@ -41,10 +41,13 @@ app.use(express.urlencoded({ extended: true }));
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+  max: parseInt(process.env.RATE_LIMIT_MAX || '300'),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
+  // Admin routes are JWT-protected and include bulk operations like
+  // "Test All Scrapers" (60+ requests at once) — don't rate-limit them.
+  skip: (req) => req.path.startsWith('/admin'),
 });
 
 const authLimiter = rateLimit({
