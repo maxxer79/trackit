@@ -62,25 +62,58 @@ export abstract class BaseScraper {
    */
   protected isBotBlocked(html: string): boolean {
     if (!html || html.length < 1500) return true; // tiny shell or empty body
-    const t = html.toLowerCase();
-    const markers = [
+
+    // IMPORTANT: only inspect VISIBLE text and the <title>. Legit pages
+    // served through Cloudflare/PerimeterX contain challenge-script
+    // fragments (cf-chl-, px-captcha, etc.) in their hidden JS even when
+    // the page is a perfectly normal product page — scanning raw HTML
+    // caused false "bot-blocked" results on real pages.
+    let visible: string;
+    let title: string;
+    try {
+      const $ = this.loadHtml(html);
+      $('script, style, noscript, link, meta').remove();
+      title = ($('title').text() || '').toLowerCase();
+      visible = ($('body').text() || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    } catch {
+      return false; // can't parse — let detection logic decide
+    }
+
+    // Challenge pages have almost no visible content
+    const tinyPage = visible.length < 400;
+
+    const titleMarkers = [
+      'just a moment',
+      'access denied',
+      'attention required',
+      'security check',
+      'are you a robot',
+      'robot or human',
+      'pardon our interruption',
+    ];
+    if (titleMarkers.some((m) => title.includes(m))) return true;
+
+    const textMarkers = [
       'pardon our interruption',
       'are you a human',
       'robot or human',
       'verify you are a human',
-      'verify yourself',
-      'access denied',
+      'verify yourself to continue',
       'request blocked',
-      'px-captcha',
-      'challenge-form',
-      'cf-chl-',
-      'just a moment...',
       'enable javascript and cookies to continue',
       'discuss automated access',
       'type the characters you see',
-      'unusual traffic',
-      '/splashui/challenge',
+      'unusual traffic from your',
+      'checking your browser',
+      'needs to review the security of your connection',
     ];
-    return markers.some((m) => t.includes(m));
+    const hasTextMarker = textMarkers.some((m) => visible.includes(m));
+
+    // A real challenge page is small AND carries a marker; a big product
+    // page that merely mentions one of these phrases somewhere is fine.
+    if (hasTextMarker && tinyPage) return true;
+    if (hasTextMarker && visible.length < 2000) return true;
+
+    return false;
   }
 }

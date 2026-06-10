@@ -44,8 +44,21 @@ export function fetchRenderedHtml(url: string, timeoutMs = 40000): Promise<strin
       // Give client-side rendering a moment to settle
       await new Promise<void>((r) => setTimeout(r, 2500));
 
+      // Cloudflare-style interstitials ("Just a moment...", "Checking your
+      // browser") usually auto-solve with stealth in a few seconds — poll
+      // until the title changes or we give up.
+      const isInterstitial = (t: string) =>
+        /just a moment|checking your browser|attention required|security check/i.test(t);
+      for (let i = 0; i < 6; i++) {
+        const title: string = await page.title().catch(() => '');
+        if (!isInterstitial(title)) break;
+        logger.info(`[BrowserFetch] Challenge interstitial detected ("${title}") — waiting (${i + 1}/6)`);
+        await new Promise<void>((r) => setTimeout(r, 3000));
+      }
+
       const html: string = await page.content();
-      logger.info(`[BrowserFetch] Got ${html.length} bytes from ${url}`);
+      const finalTitle: string = await page.title().catch(() => '');
+      logger.info(`[BrowserFetch] Got ${html.length} bytes from ${url} (title: "${finalTitle}")`);
       return html;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
