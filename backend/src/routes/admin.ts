@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { getDashboardStats, getUsers, createAdminUser, updateUser, deleteUser, getAdminProducts, createProduct, updateProduct, deleteProduct, scrapeProduct, scrapeAll, fetchImage, addStoreProduct, getAdminStores, createAdminStore, updateAdminStore, deleteAdminStore } from '../controllers/adminController';
+import { testScraper, testAllScrapers } from '../controllers/scraperHealthController';
 
 const router = Router();
 router.use(authenticate, requireAdmin);
@@ -50,6 +51,8 @@ router.post('/scrape-all', scrapeAll);
 router.get('/fetch-image', fetchImage);
 router.post('/store-products', addStoreProduct);
 router.get('/stores', getAdminStores);
+router.post('/scrapers/test-all', testAllScrapers);
+router.post('/scrapers/:slug/test', testScraper);
 router.post('/stores', createAdminStore);
 router.patch('/stores/:id', updateAdminStore);
 router.delete('/stores/:id', deleteAdminStore);

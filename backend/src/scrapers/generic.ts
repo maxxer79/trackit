@@ -82,21 +82,46 @@ export class GenericScraper extends BaseScraper {
         };
       }
 
-      const enabledCartBtn =
-        $('button:contains("Add to Cart"):not([disabled])').length > 0 ||
-        $('button:contains("Add to Bag"):not([disabled])').length > 0 ||
-        $('button:contains("Buy Now"):not([disabled])').length > 0 ||
-        $('[data-action="add-to-cart"]:not([disabled])').length > 0;
+      // Scan all clickable elements case-INSENSITIVELY (sites like
+      // BigBadToyStore render "ADD TO CART" in caps; cheerio :contains is
+      // case-sensitive and used to miss it).
+      let enabledCartBtn = false;
+      let disabledCartBtn = false;
+      let oosButton = false;
 
-      const disabledCartBtn =
-        $('button[disabled]:contains("Add to Cart")').length > 0 ||
-        $('button[disabled]:contains("Add to Bag")').length > 0;
+      $('button, a, input[type="submit"], [role="button"], [class*="add-to-cart"], [data-action="add-to-cart"]').each(
+        (_i: number, el: any) => {
+          const text = ($(el).text() || $(el).attr('value') || '').toLowerCase().replace(/\s+/g, ' ').trim();
+          if (!text || text.length > 80) return; // skip empty / giant containers
+          const disabled =
+            $(el).is('[disabled]') ||
+            $(el).attr('aria-disabled') === 'true' ||
+            /\bdisabled\b/.test($(el).attr('class') ?? '');
 
-      const oosButton =
-        $('button:contains("Notify Me")').length > 0 ||
-        $('button:contains("Email me when available")').length > 0 ||
-        $('button:contains("Out of Stock")').length > 0 ||
-        $('button:contains("Sold Out")').length > 0;
+          const isBuy = /(add to cart|add to bag|add to basket|buy now)/.test(text);
+          const isOos = /(notify me|email me when|out of stock|sold out|unavailable)/.test(text);
+
+          // A variation link like "Damaged SOLD OUT" is both a link and
+          // mentions sold out — only count it as an OOS *button* when it's
+          // short and purely an availability label, not a nav/variation link.
+          if (isBuy && !isOos) {
+            if (disabled) disabledCartBtn = true;
+            else enabledCartBtn = true;
+          } else if (isOos && /^(notify me( when available)?|email me when available|out of stock|sold out|currently unavailable)$/.test(text)) {
+            oosButton = true;
+          }
+        }
+      );
+
+      // "in stock" as standalone text (e.g. BBTS's "IN STOCK" heading) —
+      // but never count phrases about FUTURE stock ("back in stock",
+      // "when in stock") as positive signals.
+      const cleanedText = bodyText
+        .replace(/back in stock/g, '')
+        .replace(/when in stock/g, '')
+        .replace(/once in stock/g, '')
+        .replace(/if in stock/g, '');
+      const hasInStockText = /\bin stock\b/.test(cleanedText);
 
       const oosText =
         bodyText.includes('currently unavailable') ||
@@ -107,14 +132,17 @@ export class GenericScraper extends BaseScraper {
 
       let status: Status = 'UNKNOWN';
 
-      if (enabledCartBtn && !disabledCartBtn && !oosButton) {
+      if (enabledCartBtn && !oosButton) {
         // Live purchase button is the strongest DOM signal there is.
-        // Do NOT let body-text mentions of "out of stock" (related items,
-        // FAQs, scripts) override it.
+        // Do NOT let body-text mentions of "sold out" (other variations,
+        // related items, FAQs) override it.
         status = 'IN_STOCK';
       } else if (disabledCartBtn || oosButton) {
         status = 'OUT_OF_STOCK';
-      } else if (oosText && !enabledCartBtn) {
+      } else if (hasInStockText && !oosButton && !disabledCartBtn) {
+        // Page explicitly says "IN STOCK" and no OOS button contradicts it
+        status = 'IN_STOCK';
+      } else if (oosText && !hasInStockText && !enabledCartBtn) {
         status = 'OUT_OF_STOCK';
       }
       // Anything conflicting or signal-free stays UNKNOWN → status preserved.

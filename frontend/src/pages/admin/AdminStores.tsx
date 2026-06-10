@@ -19,6 +19,16 @@ interface Store {
 
 const EMPTY_FORM = { name: '', slug: '', domain: '', logoUrl: '', searchUrl: '', country: 'us', sortOrder: '99' };
 
+interface ScraperTestResult {
+  storeSlug: string;
+  light: 'green' | 'red' | 'gray';
+  status: string;
+  price?: number;
+  message?: string;
+  testedUrl?: string;
+  productName?: string;
+  durationMs: number;
+}
 
 export default function AdminStores() {
   const qc = useQueryClient();
@@ -27,6 +37,9 @@ export default function AdminStores() {
   const [editStore, setEditStore] = useState<Store | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, ScraperTestResult>>({});
+  const [testing, setTesting] = useState<Set<string>>(new Set());
+  const [testingAll, setTestingAll] = useState(false);
 
   const { data: stores = [], isLoading } = useQuery<Store[]>({
     queryKey: ['admin-stores'],
@@ -91,6 +104,74 @@ export default function AdminStores() {
     }));
   };
 
+  // ── Scraper health checks ───────────────────────────────────────────────
+  const testOne = async (slug: string): Promise<ScraperTestResult> => {
+    setTesting(prev => new Set(prev).add(slug));
+    try {
+      const { data } = await api.post<ScraperTestResult>(`/admin/scrapers/${slug}/test`, {}, { timeout: 90000 });
+      setTestResults(prev => ({ ...prev, [slug]: data }));
+      return data;
+    } catch (err: any) {
+      const failed: ScraperTestResult = {
+        storeSlug: slug, light: 'red', status: 'ERROR',
+        message: err.response?.data?.message ?? err.message, durationMs: 0,
+      };
+      setTestResults(prev => ({ ...prev, [slug]: failed }));
+      return failed;
+    } finally {
+      setTesting(prev => { const n = new Set(prev); n.delete(slug); return n; });
+    }
+  };
+
+  const handleTestOne = async (slug: string) => {
+    const r = await testOne(slug);
+    if (r.light === 'green') toast.success(`${slug}: scraper working (${r.status})`);
+    else if (r.light === 'gray') toast(`${slug}: no listings to test`, { icon: '➖' });
+    else toast.error(`${slug}: ${r.message ?? 'scraper failing'}`);
+  };
+
+  const handleTestAll = async () => {
+    const slugs = stores.filter(s => s.isActive).map(s => s.slug);
+    if (slugs.length === 0) return;
+    setTestingAll(true);
+    setTestResults({});
+    let green = 0, red = 0, gray = 0;
+
+    // 3 at a time so the backend (and eBay's headless browser) isn't hammered
+    const queue = [...slugs];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const slug = queue.shift();
+        if (!slug) break;
+        const r = await testOne(slug);
+        if (r.light === 'green') green++;
+        else if (r.light === 'gray') gray++;
+        else red++;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, slugs.length) }, worker));
+
+    setTestingAll(false);
+    toast[red === 0 ? 'success' : 'error'](
+      `Scraper check done — ${green} working · ${red} failing · ${gray} untestable`,
+      { duration: 6000 }
+    );
+  };
+
+  const StatusLight = ({ slug }: { slug: string }) => {
+    const r = testResults[slug];
+    const busy = testing.has(slug);
+    const color = busy ? 'bg-apple-yellow animate-pulse'
+      : !r ? 'bg-dark-surface3'
+      : r.light === 'green' ? 'bg-apple-green'
+      : r.light === 'gray' ? 'bg-dark-label3'
+      : 'bg-apple-red';
+    const title = busy ? 'Testing…'
+      : !r ? 'Not tested yet'
+      : `${r.status}${r.price ? ` · $${r.price}` : ''}${r.message ? ` — ${r.message}` : ''}${r.durationMs ? ` (${(r.durationMs / 1000).toFixed(1)}s)` : ''}`;
+    return <span title={title} className={`inline-block w-3 h-3 rounded-full shrink-0 ${color}`} />;
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-center justify-between mb-8">
@@ -98,8 +179,24 @@ export default function AdminStores() {
           <h1 className="section-title">Retailers</h1>
           <p className="section-subtitle">{stores.length} stores · {stores.filter(s => s.isActive).length} active</p>
         </div>
-        <button onClick={openCreate} className="btn-primary px-5 py-2.5 text-subhead">+ Add Retailer</button>
+        <div className="flex items-center gap-3">
+          <button onClick={handleTestAll} disabled={testingAll}
+            className="btn-secondary px-5 py-2.5 text-subhead disabled:opacity-60">
+            {testingAll ? `Testing… (${Object.keys(testResults).length}/${stores.filter(s => s.isActive).length})` : '🧪 Test All Scrapers'}
+          </button>
+          <button onClick={openCreate} className="btn-primary px-5 py-2.5 text-subhead">+ Add Retailer</button>
+        </div>
       </div>
+
+      {/* Test results summary */}
+      {Object.keys(testResults).length > 0 && !testingAll && (
+        <div className="flex items-center gap-4 mb-4 text-caption1 text-dark-label2">
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-apple-green inline-block" /> {Object.values(testResults).filter(r => r.light === 'green').length} working</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-apple-red inline-block" /> {Object.values(testResults).filter(r => r.light === 'red').length} failing</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-dark-label3 inline-block" /> {Object.values(testResults).filter(r => r.light === 'gray').length} no listings</span>
+          <span className="text-dark-label3">· hover a light for details</span>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-6">
@@ -132,17 +229,42 @@ export default function AdminStores() {
               <StoreLogo logoUrl={store.logoUrl} domain={store.domain} name={store.name} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
+                  <StatusLight slug={store.slug} />
                   <p className="text-subhead font-semibold text-dark-label1 truncate">{store.name}</p>
                   {!store.isActive && (
                     <span className="text-caption2 px-2 py-0.5 rounded-pill bg-dark-surface3 text-dark-label3 font-semibold">Inactive</span>
                   )}
                 </div>
-                <p className="text-caption1 text-dark-label3">{store.domain ?? '—'}</p>
+                <p className="text-caption1 text-dark-label3">
+                  {store.domain ?? '—'}
+                  {testResults[store.slug]?.message && (
+                    <span className={`ml-2 ${testResults[store.slug].light === 'green' ? 'text-apple-green' : testResults[store.slug].light === 'red' ? 'text-apple-red' : ''}`}>
+                      {testResults[store.slug].message}
+                    </span>
+                  )}
+                </p>
               </div>
               <div className="hidden sm:block text-right shrink-0">
                 <p className="text-caption2 text-dark-label3">Order: {store.sortOrder}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                {/* Test scraper */}
+                <button
+                  onClick={() => handleTestOne(store.slug)}
+                  disabled={testing.has(store.slug) || testingAll}
+                  className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-blue hover:bg-apple-blue/10 disabled:opacity-50"
+                  title="Test this store's scraper"
+                >
+                  {testing.has(store.slug) ? (
+                    <svg className="animate-spin" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <path d="M7 1.5a5.5 5.5 0 1 1-5.5 5.5" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 2.5l8 4.5-8 4.5V2.5z" />
+                    </svg>
+                  )}
+                </button>
                 {/* Toggle active */}
                 <button
                   onClick={() => toggleActive.mutate({ id: store.id, isActive: !store.isActive })}
