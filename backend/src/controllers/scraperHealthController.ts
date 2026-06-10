@@ -13,7 +13,7 @@ import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
 import logger from '../utils/logger';
 
-const PER_STORE_TIMEOUT_MS = 60000; // eBay Puppeteer fallback can take ~35s
+const PER_STORE_TIMEOUT_MS = 100000; // browser/FlareSolverr fallbacks queue up and can take 60s+
 
 export interface ScraperTestResult {
   storeSlug: string;

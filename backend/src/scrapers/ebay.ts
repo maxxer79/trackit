@@ -226,10 +226,15 @@ export class EbayScraper extends BaseScraper {
 
     const bodySnippet = $('body').text().slice(0, 200).replace(/\s+/g, ' ').trim();
     console.log(`[eBay] HTML body snippet: ${bodySnippet}`);
-    console.log(`[eBay] HTML .s-item count: ${$('.s-item').length}`);
 
-    const listingItems = $('.s-item').filter((_i, el) => {
-      const title = $(el).find('.s-item__title').text().trim();
+    // eBay is rolling out a new results layout (.s-card) alongside the old
+    // one (.s-item) — support both, plus data-attribute fallbacks.
+    const ITEM_SEL = '.s-item, .s-card, li[data-listingid], [data-testid="item-card"]';
+    const TITLE_SEL = '.s-item__title, .s-card__title, [role="heading"]';
+    console.log(`[eBay] HTML item count: ${$(ITEM_SEL).length}`);
+
+    const listingItems = $(ITEM_SEL).filter((_i, el) => {
+      const title = $(el).find(TITLE_SEL).first().text().trim();
       return title.length > 0 && title !== 'Shop on eBay';
     });
 
@@ -272,7 +277,7 @@ export class EbayScraper extends BaseScraper {
     let lowest: number | undefined;
 
     items.each((_i: number, el: any) => {
-      const priceText = $(el).find('.s-item__price').first().text().trim();
+      const priceText = $(el).find('.s-item__price, .s-card__price, [class*="price"]').first().text().trim();
       if (!priceText) return;
 
       // Handle price ranges — take the lower bound
@@ -350,9 +355,12 @@ export class EbayScraper extends BaseScraper {
       await new Promise<void>((r) => setTimeout(r, 3000));
 
       const result = await page.evaluate(() => {
-        const items = Array.from(document.querySelectorAll('.s-item'));
+        // Old (.s-item) and new (.s-card) eBay results layouts + fallbacks
+        const items = Array.from(
+          document.querySelectorAll('.s-item, .s-card, li[data-listingid], [data-testid="item-card"]')
+        );
         const realItems = items.filter((el) => {
-          const title = el.querySelector('.s-item__title');
+          const title = el.querySelector('.s-item__title, .s-card__title, [role="heading"]');
           const text = title?.textContent?.trim() ?? '';
           return text.length > 0 && text !== 'Shop on eBay';
         });
@@ -368,7 +376,8 @@ export class EbayScraper extends BaseScraper {
         // Lowest price among real items
         let lowest: number | undefined;
         for (const el of realItems) {
-          const txt = el.querySelector('.s-item__price')?.textContent ?? '';
+          const txt =
+            el.querySelector('.s-item__price, .s-card__price, [class*="price"]')?.textContent ?? '';
           const m = txt.match(/\$([\d,]+\.?\d*)/);
           if (m) {
             const p = parseFloat(m[1].replace(/,/g, ''));

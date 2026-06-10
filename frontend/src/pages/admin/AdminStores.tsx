@@ -108,7 +108,7 @@ export default function AdminStores() {
   const testOne = async (slug: string): Promise<ScraperTestResult> => {
     setTesting(prev => new Set(prev).add(slug));
     try {
-      const { data } = await api.post<ScraperTestResult>(`/admin/scrapers/${slug}/test`, {}, { timeout: 90000 });
+      const { data } = await api.post<ScraperTestResult>(`/admin/scrapers/${slug}/test`, {}, { timeout: 120000 });
       setTestResults(prev => ({ ...prev, [slug]: data }));
       return data;
     } catch (err: any) {
