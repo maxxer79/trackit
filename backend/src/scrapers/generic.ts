@@ -1,17 +1,24 @@
 /**
  * Generic HTML scraper for stores without custom implementations.
  *
+ * Fetch strategy:
+ *   1. Plain HTTP fetch (fast, cheap)
+ *   2. If the store blocks us (HTTP 403/429/503, bot-challenge page, or a
+ *      JS-only shell) or we couldn't find any stock signal → retry with a
+ *      real headless Chromium browser + stealth (looks like a customer).
+ *
  * Detection priority (most → least reliable):
  *   1. Bot-block / JS-shell detection        → UNKNOWN (never flips status)
  *   2. JSON-LD structured data (incl. arrays, @graph, offers arrays)
  *   3. Embedded JS state ("inStock":true, "availability":"InStock", etc.)
  *   4. itemprop/meta availability microdata
- *   5. DOM button + text signals — conflicting signals return UNKNOWN
- *      instead of letting a stray "out of stock" string anywhere on the
- *      page (related items, FAQs, script bundles) override a live
+ *   5. DOM button + text signals — case-insensitive, conflicting signals
+ *      return UNKNOWN instead of letting a stray "sold out" string anywhere
+ *      on the page (other variations, related items, FAQs) override a live
  *      Add-to-Cart button.
  */
 import { BaseScraper, StockResult } from './base';
+import { fetchRenderedHtml } from './browserFetch';
 
 type Status = StockResult['status'];
 
@@ -21,22 +28,74 @@ export class GenericScraper extends BaseScraper {
   }
 
   async checkStock(productUrl: string): Promise<StockResult> {
-    try {
-      const html = await this.fetchPage(productUrl);
+    let html: string | null = null;
+    let plainFetchError: string | null = null;
 
-      // ── 1. Bot-block / shell detection ─────────────────────────────────
-      if (this.isBotBlocked(html)) {
+    // ── Attempt 1: plain HTTP ────────────────────────────────────────────
+    try {
+      html = await this.fetchPage(productUrl);
+    } catch (error: any) {
+      const httpStatus = error?.response?.status;
+      plainFetchError = httpStatus ? `HTTP ${httpStatus}` : error.message;
+      // 403/429/503 (or network refusal) = bot protection → browser fallback.
+      // Genuine 404 means a dead product link — report UNKNOWN, no browser.
+      if (httpStatus === 404) {
         return {
           storeSlug: this.storeSlug,
           status: 'UNKNOWN',
           productUrl,
-          message: 'Bot-block or empty shell page — status not determinable',
+          message: 'Product page returned 404 (dead link?)',
         };
       }
+    }
 
+    if (html && !this.isBotBlocked(html)) {
+      const result = this.detect(html, productUrl);
+      if (result.status !== 'UNKNOWN') {
+        return result;
+      }
+    }
+
+    // ── Attempt 2: headless Chromium + stealth ───────────────────────────
+    const rendered = await this.fetchViaBrowser(productUrl);
+    if (!rendered) {
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl,
+        message: plainFetchError
+          ? `Blocked (${plainFetchError}) and browser fetch failed`
+          : 'No stock signals found and browser fetch failed',
+      };
+    }
+    if (this.isBotBlocked(rendered)) {
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl,
+        message: 'Bot-blocked even via headless browser',
+      };
+    }
+
+    const result = this.detect(rendered, productUrl);
+    if (result.status === 'UNKNOWN' && !result.message) {
+      result.message = 'Page rendered but no stock signals recognized';
+    }
+    return result;
+  }
+
+  /** Overridable for tests; delegates to the shared serialized browser queue. */
+  protected fetchViaBrowser(url: string): Promise<string | null> {
+    return fetchRenderedHtml(url);
+  }
+
+  // ── Detection (pure, runs on any HTML) ─────────────────────────────────
+
+  detect(html: string, productUrl: string): StockResult {
+    try {
       const $ = this.loadHtml(html);
 
-      // ── 2. JSON-LD structured data ──────────────────────────────────────
+      // ── 1. JSON-LD structured data ────────────────────────────────────
       const schema = this.parseJsonLd($);
       if (schema.status) {
         return {
@@ -47,7 +106,7 @@ export class GenericScraper extends BaseScraper {
         };
       }
 
-      // ── 3. Embedded JS state (Next.js / preloaded state / hydration) ───
+      // ── 2. Embedded JS state (Next.js / preloaded state / hydration) ─
       const embedded = this.parseEmbeddedState(html);
       if (embedded) {
         return {
@@ -58,7 +117,7 @@ export class GenericScraper extends BaseScraper {
         };
       }
 
-      // ── 4. Microdata / meta availability ───────────────────────────────
+      // ── 3. Microdata / meta availability ──────────────────────────────
       const micro = this.parseMicrodata($);
       if (micro) {
         return {
@@ -69,7 +128,7 @@ export class GenericScraper extends BaseScraper {
         };
       }
 
-      // ── 5. DOM signals (least reliable — conservative) ─────────────────
+      // ── 4. DOM signals (least reliable — conservative) ────────────────
       const bodyText = $('body').text().toLowerCase();
 
       // JS-rendered SPA shell: page loaded but body has almost no text.
@@ -103,7 +162,7 @@ export class GenericScraper extends BaseScraper {
 
           // A variation link like "Damaged SOLD OUT" is both a link and
           // mentions sold out — only count it as an OOS *button* when it's
-          // short and purely an availability label, not a nav/variation link.
+          // purely an availability label, not a nav/variation link.
           if (isBuy && !isOos) {
             if (disabled) disabledCartBtn = true;
             else enabledCartBtn = true;
