@@ -48,6 +48,26 @@ stockCheckerQueue.process(
         try {
           const result = await scraper.checkStock(listing.url, listing.id);
 
+          // UNKNOWN means we couldn't determine status (bot-block, JS shell,
+          // network error). NEVER flip stock status on UNKNOWN — keep the
+          // last known value and just record that we checked.
+          if (result.status === 'UNKNOWN') {
+            await prisma.storeProduct.update({
+              where: { id: listing.id },
+              data: { lastChecked: new Date(), checkCount: { increment: 1 } },
+            });
+            await prisma.scraperLog.create({
+              data: {
+                storeSlug,
+                productSlug: product.slug,
+                status: 'unknown',
+                message: result.message ?? 'status unknown — kept previous value',
+                duration: Date.now() - startTime,
+              },
+            });
+            return { listingId: listing.id, inStock: listing.inStock };
+          }
+
           const wasInStock = listing.inStock;
           const isNowInStock = result.status === 'IN_STOCK' || result.status === 'LIMITED';
 

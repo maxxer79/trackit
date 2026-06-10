@@ -54,4 +54,33 @@ export abstract class BaseScraper {
   protected delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  /**
+   * Detect bot-block / challenge / JS-shell pages. When this returns true,
+   * the scraper MUST return UNKNOWN — never OUT_OF_STOCK — because we
+   * learned nothing about real availability.
+   */
+  protected isBotBlocked(html: string): boolean {
+    if (!html || html.length < 1500) return true; // tiny shell or empty body
+    const t = html.toLowerCase();
+    const markers = [
+      'pardon our interruption',
+      'are you a human',
+      'robot or human',
+      'verify you are a human',
+      'verify yourself',
+      'access denied',
+      'request blocked',
+      'px-captcha',
+      'challenge-form',
+      'cf-chl-',
+      'just a moment...',
+      'enable javascript and cookies to continue',
+      'discuss automated access',
+      'type the characters you see',
+      'unusual traffic',
+      '/splashui/challenge',
+    ];
+    return markers.some((m) => t.includes(m));
+  }
 }

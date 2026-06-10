@@ -24,7 +24,7 @@ export class EbayScraper extends BaseScraper {
   async checkStock(productUrl: string, _storeProductId?: string): Promise<StockResult> {
     const searchUrl = this.ensureBuyItNow(productUrl);
 
-    // --- Strategy 1: RSS feed (programmatic, less bot detection) ---
+    // --- Strategy 1: RSS feed (mostly dead, but free to try) ---
     try {
       const result = await this.checkViaRss(searchUrl, productUrl);
       if (result.status !== 'UNKNOWN') {
@@ -34,9 +34,19 @@ export class EbayScraper extends BaseScraper {
       console.log(`[eBay] RSS attempt failed: ${rssError.message}`);
     }
 
-    // --- Strategy 2: HTML scraping fallback ---
+    // --- Strategy 2: plain HTML scraping ---
     try {
-      return await this.checkViaHtml(searchUrl, productUrl);
+      const result = await this.checkViaHtml(searchUrl, productUrl);
+      if (result.status !== 'UNKNOWN') {
+        return result;
+      }
+    } catch (error: any) {
+      console.log(`[eBay] HTML attempt failed: ${error.message}`);
+    }
+
+    // --- Strategy 3: headless Chromium + stealth (beats bot detection) ---
+    try {
+      return await this.checkViaPuppeteer(searchUrl, productUrl);
     } catch (error: any) {
       return {
         storeSlug: this.storeSlug,
@@ -200,6 +210,18 @@ export class EbayScraper extends BaseScraper {
     const html: string =
       typeof response.data === 'string' ? response.data : String(response.data);
 
+    // Bot-block / challenge page — we learned NOTHING. Returning
+    // OUT_OF_STOCK here was the source of false "out of stock" flips.
+    if (this.isBotBlocked(html)) {
+      console.log('[eBay] HTML response is a bot-block/challenge page');
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl: originalUrl,
+        message: 'eBay served a bot-challenge page',
+      };
+    }
+
     const $ = this.loadHtml(html);
 
     const bodySnippet = $('body').text().slice(0, 200).replace(/\s+/g, ' ').trim();
@@ -214,11 +236,23 @@ export class EbayScraper extends BaseScraper {
     const count = listingItems.length;
 
     if (count === 0) {
+      // Only report OUT_OF_STOCK if this is verifiably a genuine empty
+      // results page. Otherwise eBay changed markup or partially blocked
+      // us — return UNKNOWN so the stored status is preserved.
+      if (this.isGenuineEmptyResults(html)) {
+        return {
+          storeSlug: this.storeSlug,
+          status: 'OUT_OF_STOCK',
+          productUrl: originalUrl,
+          message: 'No active Buy It Now listings found',
+        };
+      }
+      console.log('[eBay] 0 items but page not verified as empty-results — UNKNOWN');
       return {
         storeSlug: this.storeSlug,
-        status: 'OUT_OF_STOCK',
+        status: 'UNKNOWN',
         productUrl: originalUrl,
-        message: 'No active Buy It Now listings found',
+        message: 'Could not verify listing count (markup change or partial block)',
       };
     }
 
@@ -259,4 +293,114 @@ export class EbayScraper extends BaseScraper {
 
     return lowest;
   }
+
+  /**
+   * A genuine eBay "no results" page contains explicit markers. A bot-block
+   * or markup change does not — those must NOT be reported as out of stock.
+   */
+  private isGenuineEmptyResults(html: string): boolean {
+    const t = html.toLowerCase();
+    return (
+      t.includes('did not match any') ||
+      t.includes('no exact matches found') ||
+      t.includes('srp-save-null-search') ||
+      t.includes('>0 results') ||
+      t.includes('0 results for')
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strategy 3: headless Chromium + stealth plugin
+  // ---------------------------------------------------------------------------
+
+  private async checkViaPuppeteer(searchUrl: string, originalUrl: string): Promise<StockResult> {
+    if (EbayScraper.browserBusy) {
+      console.log('[eBay] Browser busy — skipping Puppeteer fallback');
+      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl: originalUrl, message: 'Browser busy' };
+    }
+    EbayScraper.browserBusy = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let browser: any;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const puppeteerExtra = require('puppeteer-extra');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+      puppeteerExtra.use(StealthPlugin());
+
+      browser = await puppeteerExtra.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+        args: [
+          '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+          '--disable-gpu', '--window-size=1280,800',
+        ],
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      );
+
+      console.log(`[eBay] Puppeteer (stealth) fetching: ${searchUrl}`);
+      await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise<void>((r) => setTimeout(r, 3000));
+
+      const result = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('.s-item'));
+        const realItems = items.filter((el) => {
+          const title = el.querySelector('.s-item__title');
+          const text = title?.textContent?.trim() ?? '';
+          return text.length > 0 && text !== 'Shop on eBay';
+        });
+        const bodyText = document.body.innerText.toLowerCase();
+        const genuineEmpty =
+          bodyText.includes('did not match any') ||
+          bodyText.includes('no exact matches found') ||
+          bodyText.includes('0 results');
+        const blocked =
+          bodyText.includes('pardon our interruption') ||
+          bodyText.includes('verify yourself') ||
+          bodyText.includes('reference id');
+        // Lowest price among real items
+        let lowest: number | undefined;
+        for (const el of realItems) {
+          const txt = el.querySelector('.s-item__price')?.textContent ?? '';
+          const m = txt.match(/\$([\d,]+\.?\d*)/);
+          if (m) {
+            const p = parseFloat(m[1].replace(/,/g, ''));
+            if (!isNaN(p) && p > 0 && (lowest === undefined || p < lowest)) lowest = p;
+          }
+        }
+        return { count: realItems.length, genuineEmpty, blocked, lowest };
+      });
+
+      console.log(`[eBay] Puppeteer found ${result.count} listing(s), blocked=${result.blocked}`);
+
+      if (result.blocked) {
+        return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl: originalUrl, message: 'Bot-challenge even via headless browser' };
+      }
+      if (result.count > 0) {
+        return {
+          storeSlug: this.storeSlug,
+          status: 'IN_STOCK',
+          price: result.lowest,
+          productUrl: originalUrl,
+          message: `${result.count} active listing${result.count === 1 ? '' : 's'} found`,
+        };
+      }
+      if (result.genuineEmpty) {
+        return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl: originalUrl, message: 'No active Buy It Now listings found' };
+      }
+      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl: originalUrl, message: 'Rendered page had no recognizable results markup' };
+    } finally {
+      EbayScraper.browserBusy = false;
+      if (browser) await browser.close().catch(() => {});
+    }
+  }
+
+  private static browserBusy = false;
 }

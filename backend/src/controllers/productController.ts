@@ -201,22 +201,31 @@ export const liveCheckProduct = async (req: Request, res: Response): Promise<voi
         const result = await scraper.checkStock(sp.url, sp.id);
         const nowInStock = result.status === 'IN_STOCK' || result.status === 'LIMITED';
 
-        await prisma.storeProduct.update({
-          where: { id: sp.id },
-          data: {
-            inStock: nowInStock,
-            stockStatus: result.status,
-            price: result.price ?? sp.price,
-            lastChecked: new Date(),
-            checkCount: { increment: 1 },
-          },
-        });
+        if (result.status === 'UNKNOWN') {
+          // Couldn't determine status (bot-block / JS shell) — keep last known
+          // value, just bump lastChecked, and report the stored status.
+          await prisma.storeProduct.update({
+            where: { id: sp.id },
+            data: { lastChecked: new Date(), checkCount: { increment: 1 } },
+          });
+        } else {
+          await prisma.storeProduct.update({
+            where: { id: sp.id },
+            data: {
+              inStock: nowInStock,
+              stockStatus: result.status,
+              price: result.price ?? sp.price,
+              lastChecked: new Date(),
+              checkCount: { increment: 1 },
+            },
+          });
+        }
 
         const payload = {
           storeProductId: sp.id,
           storeSlug: sp.store.slug,
           storeName: sp.store.name,
-          status: result.status,
+          status: result.status === 'UNKNOWN' ? (sp.stockStatus ?? 'UNKNOWN') : result.status,
           price: result.price ?? sp.price,
           lastCheckedAt: new Date().toISOString(),
         };

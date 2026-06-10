@@ -14,6 +14,17 @@ export class AmazonScraper extends BaseScraper {
 
       const cleanUrl = `https://www.amazon.com/dp/${asin}`;
       const html = await this.fetchPage(cleanUrl);
+
+      // Amazon captcha/robot page → UNKNOWN, never a stock verdict
+      if (this.isBotBlocked(html)) {
+        return {
+          storeSlug: this.storeSlug,
+          status: 'UNKNOWN',
+          productUrl: cleanUrl,
+          message: 'Amazon served a captcha/robot-check page',
+        };
+      }
+
       const $ = this.loadHtml(html);
 
       const availability = $('#availability span').first().text().trim().toLowerCase();
