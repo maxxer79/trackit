@@ -63,11 +63,20 @@ async function fetchViaFlareSolverr(url: string, timeoutMs: number): Promise<str
   }
 }
 
-export function fetchRenderedHtml(url: string, timeoutMs = 40000): Promise<string | null> {
+export interface RenderOptions {
+  /** CSS selector to wait for after page load (local Chromium only) */
+  waitSelector?: string;
+  /** Skip FlareSolverr and go straight to local Chromium */
+  skipFlareSolverr?: boolean;
+}
+
+export function fetchRenderedHtml(url: string, timeoutMs = 40000, opts: RenderOptions = {}): Promise<string | null> {
   const run = async (): Promise<string | null> => {
     // Strategy 1: FlareSolverr (if configured) — best against Cloudflare
-    const solved = await fetchViaFlareSolverr(url, timeoutMs);
-    if (solved) return solved;
+    if (!opts.skipFlareSolverr) {
+      const solved = await fetchViaFlareSolverr(url, timeoutMs);
+      if (solved) return solved;
+    }
 
     // Strategy 2: local stealth Chromium
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,10 +104,18 @@ export function fetchRenderedHtml(url: string, timeoutMs = 40000): Promise<strin
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       );
 
-      logger.info(`[BrowserFetch] Rendering ${url}`);
+      logger.info(`[BrowserFetch] Rendering ${url}${opts.waitSelector ? ` (waiting for ${opts.waitSelector})` : ''}`);
       await page.goto(url, { waitUntil: 'networkidle2', timeout: timeoutMs });
       // Give client-side rendering a moment to settle
       await new Promise<void>((r) => setTimeout(r, 2500));
+
+      // Optionally wait for a specific element (e.g. Target's buy button,
+      // which renders via late XHR after the initial page snapshot)
+      if (opts.waitSelector) {
+        await page.waitForSelector(opts.waitSelector, { timeout: 15000 }).catch(() => {
+          logger.info(`[BrowserFetch] waitSelector "${opts.waitSelector}" never appeared`);
+        });
+      }
 
       // Cloudflare-style interstitials ("Just a moment...", "Checking your
       // browser") usually auto-solve with stealth in a few seconds — poll

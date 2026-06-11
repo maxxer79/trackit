@@ -154,11 +154,40 @@ export class TargetScraper extends BaseScraper {
    * shell caused false out-of-stock readings).
    */
   private async checkViaRendered(productUrl: string): Promise<StockResult> {
+    const TARGET_BTN_SELECTOR =
+      'button[data-test="addToCartButton"], button[data-test="shippingButton"], [data-test="outOfStockMessage"]';
+
+    // Attempt 1: FlareSolverr (fast, but snapshots before Target's buy
+    // button renders about half the time)
     const html = await fetchRenderedHtml(productUrl);
-    if (!html) {
-      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered fetch failed' };
+    if (html) {
+      const result = this.analyzeRendered(html, productUrl);
+      if (result) return result;
     }
 
+    // Attempt 2: local stealth Chromium, explicitly WAITING for Target's
+    // buy button / OOS message to render before taking the snapshot
+    logger.info('[Target rendered] FlareSolverr snapshot had no signals — retrying with waitSelector');
+    const html2 = await fetchRenderedHtml(productUrl, 40000, {
+      skipFlareSolverr: true,
+      waitSelector: TARGET_BTN_SELECTOR,
+    });
+    if (html2) {
+      const result = this.analyzeRendered(html2, productUrl);
+      if (result) return result;
+      // Diagnostics: log what availability-ish strings the page DID contain
+      const hints = Array.from(new Set([
+        ...(html2.match(/"availability[_a-zA-Z]*"\s*:\s*"[A-Za-z_]+"/g) ?? []),
+        ...(html2.match(/schema\.org\/[A-Za-z]+/g) ?? []),
+      ])).slice(0, 15);
+      logger.info(`[Target rendered] still no signals after waitSelector; hints: ${hints.join(' | ') || 'NONE'}`);
+    }
+
+    return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered page had no recognizable Target signals' };
+  }
+
+  /** Returns a result when the page carries definitive signals, else null. */
+  private analyzeRendered(html: string, productUrl: string): StockResult | null {
     const embedded = this.detectEmbedded(html);
     if (embedded) {
       return { storeSlug: this.storeSlug, status: embedded, productUrl };
@@ -182,16 +211,6 @@ export class TargetScraper extends BaseScraper {
     if (addBtn.length > 0 && btnDisabled) {
       return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
     }
-
-    // Diagnostics: log what availability-ish strings the page DID contain
-    // so we can extend detection without guessing.
-    const hints = Array.from(new Set([
-      ...(html.match(/"availability[_a-zA-Z]*"\s*:\s*"[A-Za-z_]+"/g) ?? []),
-      ...(html.match(/schema\.org\/[A-Za-z]+/g) ?? []),
-      ...(html.match(/"(?:button_state|purchasability|sellable[_a-zA-Z]*)"\s*:\s*"?[A-Za-z_]+"?/g) ?? []),
-    ])).slice(0, 15);
-    logger.info(`[Target rendered] no signals recognized; page hints: ${hints.join(' | ') || 'NONE'}`);
-
-    return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered page had no recognizable Target signals' };
+    return null;
   }
 }
