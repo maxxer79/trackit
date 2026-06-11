@@ -607,39 +607,58 @@ async function checkUrl(url: string, storeSlug?: string, productName?: string): 
   return checkGeneric(url);
 }
 
+function extractImageFromHtml(html: string): string | null {
+  const $ = cheerio.load(html);
+
+  const ogImage = $('meta[property="og:image"]').attr('content') ||
+                  $('meta[name="twitter:image"]').attr('content') ||
+                  $('meta[property="twitter:image"]').attr('content');
+  if (ogImage && ogImage.startsWith('http')) return ogImage;
+
+  const selectors = [
+    '#landingImage', '#imgBlkFront',    // Amazon
+    '.primary-image img',
+    '#main-product-image img',
+    '.product-image img',
+    'img[itemprop="image"]',
+    '.product__image img',
+    '[data-testid="primary-image"] img',
+    '.swiper-slide img',                // Newegg gallery
+    'img.product-view-img-original',    // Newegg
+  ];
+
+  for (const sel of selectors) {
+    const src = $(sel).first().attr('src') || $(sel).first().attr('data-src');
+    if (src && src.startsWith('http')) return src;
+  }
+
+  return null;
+}
+
 export async function fetchProductImage(url: string): Promise<string | null> {
+  // Plain fetch first
   try {
     const response = await axios.get(url, {
       timeout: 10000,
       headers: { 'User-Agent': randomUA() },
       maxRedirects: 5,
     });
-    const $ = cheerio.load(response.data);
-
-    const ogImage = $('meta[property="og:image"]').attr('content') ||
-                    $('meta[name="twitter:image"]').attr('content') ||
-                    $('meta[property="twitter:image"]').attr('content');
-    if (ogImage) return ogImage;
-
-    const selectors = [
-      '#landingImage', '#imgBlkFront',    // Amazon
-      '.primary-image img',
-      '#main-product-image img',
-      '.product-image img',
-      'img[itemprop="image"]',
-      '.product__image img',
-      '[data-testid="primary-image"] img',
-    ];
-
-    for (const sel of selectors) {
-      const src = $(sel).first().attr('src') || $(sel).first().attr('data-src');
-      if (src && src.startsWith('http')) return src;
-    }
-
-    return null;
+    const img = extractImageFromHtml(response.data);
+    if (img) return img;
   } catch {
-    return null;
+    // blocked — try browser below
   }
+
+  // Browser/FlareSolverr fallback for stores that block plain requests
+  // (Newegg, Best Buy, etc.)
+  try {
+    const { fetchRenderedHtml } = await import('../scrapers/browserFetch');
+    const rendered = await fetchRenderedHtml(url);
+    if (rendered) return extractImageFromHtml(rendered);
+  } catch {
+    // give up quietly
+  }
+  return null;
 }
 
 export const checkStockForProduct = async (storeProductId: string): Promise<void> => {

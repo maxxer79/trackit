@@ -30,7 +30,11 @@ export class HasbroPulseScraper extends BaseScraper {
   }
 
   async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
-    const sku = storeProductId || this.extractSku(productUrl);
+    // storeProductId is the DB record id (cuid), NOT a Hasbro SKU — only
+    // use it if it looks like one (e.g. "F9018", short letter+digits)
+    const sku =
+      (storeProductId && /^[A-Z]\d{3,5}[A-Z0-9]{0,3}$/i.test(storeProductId) ? storeProductId : undefined) ||
+      this.extractSku(productUrl);
 
     if (sku) {
       return this.checkViaOcapi(sku, productUrl);

@@ -8,7 +8,11 @@ export class TargetScraper extends BaseScraper {
 
   async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
     try {
-      const tcin = storeProductId || productUrl.match(/A-(\d+)/)?.[1];
+      // storeProductId is the DB record id (cuid), NOT a TCIN — only use
+      // it if it's actually numeric
+      const tcin =
+        (storeProductId && /^\d{8,9}$/.test(storeProductId) ? storeProductId : undefined) ||
+        productUrl.match(/A-(\d+)/)?.[1];
 
       if (tcin) {
         // Target Redsky API — send JSON Accept + browser-like Referer so Target doesn't block us

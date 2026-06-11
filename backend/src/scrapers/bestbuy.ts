@@ -9,8 +9,11 @@ export class BestBuyScraper extends BaseScraper {
   async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
     // Best Buy has a public availability API — try it first, but it
     // frequently 504s/blocks server requests, so always fall back to HTML.
+    // storeProductId is the DB record id (cuid), NOT a SKU — only use it
+    // if it's actually numeric. New-style URLs (/product/{name}/J7GSL48K33)
+    // carry no numeric SKU at all; for those the HTML path mines "skuId".
     const skuMatch =
-      storeProductId ||
+      (storeProductId && /^\d{7,8}$/.test(storeProductId) ? storeProductId : undefined) ||
       productUrl.match(/\/(\d{7,8})\.p/)?.[1] ||
       productUrl.match(/[?&]skuId=(\d+)/)?.[1];
 
@@ -93,6 +96,18 @@ export class BestBuyScraper extends BaseScraper {
     }
     if (/"buttonState"\s*:\s*"PRE_ORDER"/i.test(html)) {
       return { storeSlug: this.storeSlug, status: 'PREORDER', productUrl };
+    }
+
+    // New-style URLs carry no SKU — but the page HTML embeds it.
+    // Mine it and hit the availability API with the real SKU.
+    const minedSku = html.match(/"skuId"\s*:\s*"?(\d{7,8})"?/i)?.[1];
+    if (minedSku) {
+      try {
+        const apiResult = await this.checkViaApi(minedSku, productUrl);
+        if (apiResult.status !== 'UNKNOWN') return apiResult;
+      } catch {
+        // fall through to DOM checks
+      }
     }
 
     const $ = this.loadHtml(html);

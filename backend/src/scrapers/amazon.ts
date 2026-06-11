@@ -7,9 +7,15 @@ export class AmazonScraper extends BaseScraper {
 
   async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
     try {
-      const asin = storeProductId || productUrl.match(/\/dp\/([A-Z0-9]{10})/)?.[1];
+      // storeProductId is the DB record id (cuid), NOT an ASIN — only use
+      // it if it actually looks like an ASIN. Otherwise mine the URL.
+      const asin =
+        (storeProductId && /^[A-Z0-9]{10}$/.test(storeProductId) ? storeProductId : undefined) ||
+        productUrl.match(/\/dp\/([A-Z0-9]{10})/)?.[1] ||
+        productUrl.match(/\/gp\/product\/([A-Z0-9]{10})/)?.[1] ||
+        productUrl.match(/[?&]asin=([A-Z0-9]{10})/i)?.[1];
       if (!asin) {
-        return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl };
+        return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'No ASIN found in URL' };
       }
 
       const cleanUrl = `https://www.amazon.com/dp/${asin}`;

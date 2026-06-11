@@ -7,7 +7,11 @@ export class WalmartScraper extends BaseScraper {
 
   async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
     try {
-      const itemId = storeProductId || productUrl.match(/\/ip\/[^/]+\/(\d+)/)?.[1];
+      // storeProductId is the DB record id (cuid), NOT an item id — only
+      // use it if it's actually numeric
+      const itemId =
+        (storeProductId && /^\d+$/.test(storeProductId) ? storeProductId : undefined) ||
+        productUrl.match(/\/ip\/[^/]+\/(\d+)/)?.[1];
 
       if (itemId) {
         // Try Walmart API first
