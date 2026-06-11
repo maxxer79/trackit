@@ -238,7 +238,20 @@ export class EbayScraper extends BaseScraper {
       return title.length > 0 && title !== 'Shop on eBay';
     });
 
-    const count = listingItems.length;
+    let count = listingItems.length;
+    let lowestPrice = count > 0 ? this.extractLowestPriceFromHtml($, listingItems) : undefined;
+
+    if (count === 0) {
+      // CSS classes failed — fall back to counting product LINKS. Every
+      // real listing links to /itm/{id}; eBay can redesign classes but
+      // not their listing URLs. Layout-independent.
+      const linkCount = this.countItmLinks($);
+      console.log(`[eBay] /itm/ link count: ${linkCount}`);
+      if (linkCount > 0) {
+        count = linkCount;
+        lowestPrice = this.extractLowestPriceFromHtml($, $('body'));
+      }
+    }
 
     if (count === 0) {
       // Only report OUT_OF_STOCK if this is verifiably a genuine empty
@@ -261,8 +274,6 @@ export class EbayScraper extends BaseScraper {
       };
     }
 
-    const lowestPrice = this.extractLowestPriceFromHtml($, listingItems);
-
     return {
       storeSlug: this.storeSlug,
       status: 'IN_STOCK',
@@ -270,6 +281,21 @@ export class EbayScraper extends BaseScraper {
       productUrl: originalUrl,
       message: `${count} active listing${count === 1 ? '' : 's'} found`,
     };
+  }
+
+  /**
+   * Count unique /itm/{id} listing links — layout-independent listing
+   * detection. Excludes eBay's placeholder links (short dummy IDs).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private countItmLinks($: any): number {
+    const ids = new Set<string>();
+    $('a[href*="/itm/"]').each((_i: number, el: any) => {
+      const href = $(el).attr('href') ?? '';
+      const m = href.match(/\/itm\/(\d{9,})/);
+      if (m) ids.add(m[1]);
+    });
+    return ids.size;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -359,11 +385,21 @@ export class EbayScraper extends BaseScraper {
         const items = Array.from(
           document.querySelectorAll('.s-item, .s-card, li[data-listingid], [data-testid="item-card"]')
         );
-        const realItems = items.filter((el) => {
+        let realItems = items.filter((el) => {
           const title = el.querySelector('.s-item__title, .s-card__title, [role="heading"]');
           const text = title?.textContent?.trim() ?? '';
           return text.length > 0 && text !== 'Shop on eBay';
         });
+        // Layout-independent fallback: count unique /itm/{id} listing links
+        let linkCount = 0;
+        if (realItems.length === 0) {
+          const ids = new Set<string>();
+          document.querySelectorAll('a[href*="/itm/"]').forEach((a) => {
+            const m = (a.getAttribute('href') ?? '').match(/\/itm\/(\d{9,})/);
+            if (m) ids.add(m[1]);
+          });
+          linkCount = ids.size;
+        }
         const bodyText = document.body.innerText.toLowerCase();
         const genuineEmpty =
           bodyText.includes('did not match any') ||
@@ -384,7 +420,7 @@ export class EbayScraper extends BaseScraper {
             if (!isNaN(p) && p > 0 && (lowest === undefined || p < lowest)) lowest = p;
           }
         }
-        return { count: realItems.length, genuineEmpty, blocked, lowest };
+        return { count: realItems.length + linkCount, genuineEmpty, blocked, lowest };
       });
 
       console.log(`[eBay] Puppeteer found ${result.count} listing(s), blocked=${result.blocked}`);

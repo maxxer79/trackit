@@ -303,6 +303,10 @@ export class GenericScraper extends BaseScraper {
     if (/"purchasable"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
     if (/"is_available"\s*:\s*true/i.test(html)) return 'IN_STOCK';
     if (/"is_available"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
+    // Best Buy embeds availability as button state in hydration JSON
+    if (/"buttonState"\s*:\s*"ADD_TO_CART"/i.test(html)) return 'IN_STOCK';
+    if (/"buttonState"\s*:\s*"SOLD_OUT"/i.test(html)) return 'OUT_OF_STOCK';
+    if (/"buttonState"\s*:\s*"PRE_ORDER"/i.test(html)) return 'PREORDER';
     return null;
   }
 
