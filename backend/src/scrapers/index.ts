@@ -1,5 +1,6 @@
 import { BaseScraper } from './base';
 import { AmazonScraper } from './amazon';
+import { AppleScraper } from './apple';
 import { BestBuyScraper } from './bestbuy';
 import { WalmartScraper } from './walmart';
 import { TargetScraper } from './target';
@@ -51,6 +52,7 @@ scraperRegistry.set('newegg', new WithGenericFallback('newegg', new NeweggScrape
 scraperRegistry.set('gamestop', new WithGenericFallback('gamestop', new GameStopScraper()));
 scraperRegistry.set('ebay', new EbayScraper());
 scraperRegistry.set('hasbropulse', new WithGenericFallback('hasbropulse', new HasbroPulseScraper()));
+scraperRegistry.set('apple', new WithGenericFallback('apple', new AppleScraper()));
 
 // All other stores use the generic scraper
 const allStores = [
