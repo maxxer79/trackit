@@ -147,6 +147,7 @@ export class GenericScraper extends BaseScraper {
       let enabledCartBtn = false;
       let disabledCartBtn = false;
       let oosButton = false;
+      let preorderBtn = false;
 
       $('button, a, input[type="submit"], [role="button"], [class*="add-to-cart"], [data-action="add-to-cart"]').each(
         (_i: number, el: any) => {
@@ -158,6 +159,7 @@ export class GenericScraper extends BaseScraper {
             /\bdisabled\b/.test($(el).attr('class') ?? '');
 
           const isBuy = /(add to cart|add to bag|add to basket|buy now)/.test(text);
+          const isPre = /^(pre-?order( now)?|pre-?order for shipping|pre-?order for pickup)$/.test(text);
           const isOos = /(notify me|email me when|out of stock|sold out|unavailable)/.test(text);
 
           // A variation link like "Damaged SOLD OUT" is both a link and
@@ -166,6 +168,8 @@ export class GenericScraper extends BaseScraper {
           if (isBuy && !isOos) {
             if (disabled) disabledCartBtn = true;
             else enabledCartBtn = true;
+          } else if (isPre && !disabled) {
+            preorderBtn = true;
           } else if (isOos && /^(notify me( when available)?|email me when available|out of stock|sold out|currently unavailable)$/.test(text)) {
             oosButton = true;
           }
@@ -196,6 +200,9 @@ export class GenericScraper extends BaseScraper {
         // Do NOT let body-text mentions of "sold out" (other variations,
         // related items, FAQs) override it.
         status = 'IN_STOCK';
+      } else if (preorderBtn && !oosButton) {
+        // Active Preorder button = buyable preorder (Target etc.)
+        status = 'PREORDER';
       } else if (disabledCartBtn || oosButton) {
         status = 'OUT_OF_STOCK';
       } else if (hasInStockText && !oosButton && !disabledCartBtn) {

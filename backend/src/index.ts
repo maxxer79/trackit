@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { initSocket } from './socket/index';
 import { scheduleAllProducts } from './workers/stockChecker';
+import { BACKEND_VERSION } from './version';
 
 // Routes
 import authRoutes from './routes/auth';
@@ -68,7 +69,12 @@ app.use('/api/auth/register', authLimiter);
 // ─── Health Check ──────────────────────────────────────────────────────────────
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', version: BACKEND_VERSION, timestamp: new Date().toISOString() });
+});
+
+// Also reachable through the frontend proxy at /api/health
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', version: BACKEND_VERSION, timestamp: new Date().toISOString() });
 });
 
 // ─── API Routes ────────────────────────────────────────────────────────────────
@@ -104,7 +110,7 @@ initSocket(httpServer);
 const PORT = parseInt(process.env.PORT || '3001');
 
 httpServer.listen(PORT, async () => {
-  console.log(`🚀 TrackIt backend running on port ${PORT}`);
+  console.log(`🚀 TrackIt backend v${BACKEND_VERSION} running on port ${PORT}`);
   console.log(`📡 Socket.io initialized`);
 
   // Start stock checker worker and schedule all active products.
