@@ -615,6 +615,25 @@ function extractImageFromHtml(html: string): string | null {
                   $('meta[property="twitter:image"]').attr('content');
   if (ogImage && ogImage.startsWith('http')) return ogImage;
 
+  // JSON-LD product image (most retailers embed this for SEO)
+  let ldImage: string | null = null;
+  $('script[type="application/ld+json"]').each((_i, el) => {
+    if (ldImage) return;
+    try {
+      const json = JSON.parse($(el).html() || 'null');
+      const nodes = Array.isArray(json) ? json : [json, ...(json?.['@graph'] ?? [])];
+      for (const node of nodes) {
+        const img = node?.image;
+        const candidate = Array.isArray(img) ? img[0] : typeof img === 'object' ? img?.url : img;
+        if (typeof candidate === 'string' && candidate.startsWith('http')) {
+          ldImage = candidate;
+          break;
+        }
+      }
+    } catch {}
+  });
+  if (ldImage) return ldImage;
+
   const selectors = [
     '#landingImage', '#imgBlkFront',    // Amazon
     '.primary-image img',
@@ -630,6 +649,21 @@ function extractImageFromHtml(html: string): string | null {
   for (const sel of selectors) {
     const src = $(sel).first().attr('src') || $(sel).first().attr('data-src');
     if (src && src.startsWith('http')) return src;
+  }
+
+  // Site-specific CDN patterns inside hydration JSON (Best Buy etc.)
+  const cdnPatterns = [
+    /https:\/\/pisces\.bbystatic\.com\/image2\/[^"'\\\s]+?\.(?:jpg|jpeg|png|webp)/i, // Best Buy
+    /https:\/\/c1\.neweggimages\.com\/[^"'\\\s]+?\.(?:jpg|jpeg|png|webp)/i,           // Newegg
+    /https:\/\/target\.scene7\.com\/is\/image\/Target\/[^"'\\\s?]+/i,                 // Target
+    /"image"\s*:\s*"(https?:\/\/[^"]+?\.(?:jpg|jpeg|png|webp)[^"]*?)"/i,              // generic JSON
+  ];
+  for (const re of cdnPatterns) {
+    const m = html.match(re);
+    if (m) {
+      const url = (m[1] ?? m[0]).replace(/\\u002F/g, '/').replace(/\\\//g, '/');
+      if (url.startsWith('http')) return url;
+    }
   }
 
   return null;

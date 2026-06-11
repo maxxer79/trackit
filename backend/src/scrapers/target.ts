@@ -83,17 +83,10 @@ export class TargetScraper extends BaseScraper {
       const html = await this.fetchPage(productUrl);
 
       // Target SSR embeds availability_status (snake_case) in __TGT_DATA__
-      if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) {
-        return { storeSlug: this.storeSlug, status: 'PREORDER', productUrl };
-      }
-      if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) {
-        return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
-      }
-      if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) {
-        return { storeSlug: this.storeSlug, status: 'IN_STOCK', productUrl };
-      }
-      if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) {
-        return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+      // and schema.org JSON-LD availability in the SEO head
+      const embedded = this.detectEmbedded(html);
+      if (embedded) {
+        return { storeSlug: this.storeSlug, status: embedded, productUrl };
       }
 
       const $ = this.loadHtml(html);
@@ -139,6 +132,23 @@ export class TargetScraper extends BaseScraper {
   }
 
   /**
+   * Availability from Target-specific embedded data: __TGT_DATA__
+   * availability_status values AND the schema.org JSON-LD that Target
+   * server-renders in the page head for SEO (present even in the JS shell).
+   */
+  private detectEmbedded(html: string): StockResult['status'] | null {
+    if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) return 'PREORDER';
+    if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) return 'OUT_OF_STOCK';
+    if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) return 'IN_STOCK';
+    if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) return 'OUT_OF_STOCK';
+    // schema.org JSON-LD in the SEO head
+    if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?PreOrder"/i.test(html)) return 'PREORDER';
+    if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?InStock"/i.test(html)) return 'IN_STOCK';
+    if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?OutOfStock"/i.test(html)) return 'OUT_OF_STOCK';
+    return null;
+  }
+
+  /**
    * FlareSolverr / headless Chromium fallback — renders the real PDP and
    * reads Target-specific signals ONLY (generic text matching on Target's
    * shell caused false out-of-stock readings).
@@ -149,17 +159,9 @@ export class TargetScraper extends BaseScraper {
       return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered fetch failed' };
     }
 
-    if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) {
-      return { storeSlug: this.storeSlug, status: 'PREORDER', productUrl };
-    }
-    if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) {
-      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
-    }
-    if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) {
-      return { storeSlug: this.storeSlug, status: 'IN_STOCK', productUrl };
-    }
-    if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) {
-      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+    const embedded = this.detectEmbedded(html);
+    if (embedded) {
+      return { storeSlug: this.storeSlug, status: embedded, productUrl };
     }
 
     const $ = this.loadHtml(html);
