@@ -168,47 +168,86 @@ export class TargetScraper extends BaseScraper {
     };
   }
 
-  /**
-   * Fetch the Redsky API through FlareSolverr / Chromium so the request
-   * comes from a real browser context. The response arrives as an HTML
-   * page wrapping the JSON — extract and parse it.
-   */
-  private async checkRedskyViaBrowser(tcin: string, productUrl: string): Promise<StockResult | null> {
-    const body = await fetchRenderedHtml(this.redskyUrl(tcin));
+  private fulfillmentUrl(tcin: string): string {
+    // Target split availability out of pdp_client_v1 into a dedicated
+    // fulfillment aggregation (confirmed: client_v1 responses carry no
+    // fulfillment key at all anymore).
+    return (
+      `https://redsky.target.com/redsky_aggregations/v1/web/pdp_fulfillment_v1` +
+      `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
+      `&tcin=${tcin}` +
+      `&store_id=3991&store_positions_store_id=3991&has_store_positions_store_id=false` +
+      `&zip=55403&state=MN&latitude=44.970&longitude=-93.280` +
+      `&scheduled_delivery_store_id=3991&required_store_id=3991&has_required_store_id=false&is_bot=false`
+    );
+  }
+
+  /** Fetch a Redsky API URL through FlareSolverr / Chromium and parse the JSON. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fetchJsonViaBrowser(apiUrl: string, label: string): Promise<{ data: any; raw: string } | null> {
+    const body = await fetchRenderedHtml(apiUrl);
     if (!body) {
-      logger.warn(`[Target] Browser-based Redsky fetch failed for TCIN ${tcin}`);
+      logger.warn(`[Target] Browser-based ${label} fetch failed`);
       return null;
     }
     const start = body.indexOf('{');
     const end = body.lastIndexOf('}');
     if (start < 0 || end <= start) {
-      logger.warn(`[Target] Browser-based Redsky response had no JSON for TCIN ${tcin} (${body.length} bytes)`);
+      logger.warn(`[Target] Browser-based ${label} response had no JSON (${body.length} bytes)`);
       return null;
     }
     try {
-      // Strip HTML entities the browser may have introduced around the JSON
       const jsonText = body
         .slice(start, end + 1)
         .replace(/&quot;/g, '"')
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>');
-      const data = JSON.parse(jsonText);
+      return { data: JSON.parse(jsonText), raw: body };
+    } catch (err: any) {
+      logger.warn(`[Target] Browser-based ${label} JSON parse failed: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch the Redsky APIs through FlareSolverr / Chromium so the requests
+   * come from a real browser context: pdp_client_v1 first (price + some
+   * shapes), then pdp_fulfillment_v1 (where availability actually lives).
+   */
+  private async checkRedskyViaBrowser(tcin: string, productUrl: string): Promise<StockResult | null> {
+    const client = await this.fetchJsonViaBrowser(this.redskyUrl(tcin), 'client_v1');
+    if (client) {
       logger.info(`[Target] Browser-based Redsky fetch SUCCEEDED for TCIN ${tcin}`);
-      const mapped = this.mapRedsky(tcin, data, productUrl);
+      const mapped = this.mapRedsky(tcin, client.data, productUrl);
       if (mapped) return mapped;
-      // Structured paths missed it — regex the raw JSON for availability
-      // markers anywhere in the response (catches schema changes)
-      const embedded = this.detectEmbedded(body);
+      const embedded = this.detectEmbedded(client.raw);
       if (embedded) {
         logger.info(`[Target TCIN:${tcin}] availability found via raw-JSON regex: ${embedded}`);
         return { storeSlug: this.storeSlug, status: embedded, productUrl };
       }
-      return null;
-    } catch (err: any) {
-      logger.warn(`[Target] Browser-based Redsky JSON parse failed for TCIN ${tcin}: ${err.message}`);
-      return null;
     }
+
+    // client_v1 had no fulfillment — query the dedicated fulfillment API
+    const ff = await this.fetchJsonViaBrowser(this.fulfillmentUrl(tcin), 'fulfillment_v1');
+    if (ff) {
+      logger.info(`[Target] Browser-based fulfillment_v1 fetch SUCCEEDED for TCIN ${tcin}`);
+      const mapped = this.mapRedsky(tcin, ff.data, productUrl);
+      if (mapped) {
+        // Carry price over from client_v1 if fulfillment lacks it
+        if (mapped.price === undefined && client) {
+          const p = client.data?.data?.product?.price?.current_retail;
+          if (p) mapped.price = parseFloat(p);
+        }
+        return mapped;
+      }
+      const embedded = this.detectEmbedded(ff.raw);
+      if (embedded) {
+        logger.info(`[Target TCIN:${tcin}] availability found via fulfillment raw-JSON regex: ${embedded}`);
+        return { storeSlug: this.storeSlug, status: embedded, productUrl };
+      }
+    }
+    return null;
   }
 
   /**

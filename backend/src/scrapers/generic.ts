@@ -103,17 +103,19 @@ export class GenericScraper extends BaseScraper {
           status: schema.status,
           price: schema.price ?? this.extractPrice($) ?? this.extractPriceFromJson(html),
           productUrl,
+          message: 'via JSON-LD offers',
         };
       }
 
       // ── 2. Embedded JS state (Next.js / preloaded state / hydration) ─
-      const embedded = this.parseEmbeddedState(html);
+      const embedded = this.parseEmbeddedStateDetailed(html);
       if (embedded) {
         return {
           storeSlug: this.storeSlug,
-          status: embedded,
+          status: embedded.status,
           price: this.extractPrice($) ?? this.extractPriceFromJson(html),
           productUrl,
+          message: `via embedded JSON: ${embedded.detail}`,
         };
       }
 
@@ -356,6 +358,40 @@ export class GenericScraper extends BaseScraper {
       }
     }
     return best;
+  }
+
+  /**
+   * Like parseEmbeddedState, but also reports WHICH snippet decided —
+   * including surrounding context so false reads can be traced to the
+   * exact product/SKU entry inside hydration JSON.
+   */
+  private parseEmbeddedStateDetailed(html: string): { status: Status; detail: string } | null {
+    const status = this.parseEmbeddedState(html);
+    if (!status) return null;
+
+    // Re-find the winning index for context (same logic as parseEmbeddedState)
+    const allPatterns: RegExp[] = [
+      /"availability"\s*:\s*"(?:https?:\/\/schema\.org\/)?(?:InStock|OutOfStock|PreOrder)"/i,
+      /"availabilityStatus"\s*:\s*"(?:IN_STOCK|OUT_OF_STOCK)"/i,
+      /"availability_status"\s*:\s*"(?:PRE_ORDER_SELLABLE|PRE_ORDER_UNSELLABLE|IN_STOCK|OUT_OF_STOCK)"/i,
+      /"inStock"\s*:\s*(?:true|false)/i,
+      /"purchasable"\s*:\s*(?:true|false)/i,
+      /"is_available"\s*:\s*(?:true|false)/i,
+      /"buttonState"\s*:\s*"(?:ADD_TO_CART|SOLD_OUT|PRE_ORDER)"/i,
+    ];
+    let bestIdx = Infinity;
+    for (const re of allPatterns) {
+      const idx = html.search(re);
+      if (idx >= 0 && idx < bestIdx) bestIdx = idx;
+    }
+    if (bestIdx === Infinity) return { status, detail: 'unknown position' };
+
+    const context = html
+      .slice(Math.max(0, bestIdx - 120), bestIdx + 80)
+      .replace(/\s+/g, ' ')
+      .replace(/</g, '‹')
+      .trim();
+    return { status, detail: `@${bestIdx} …${context}…` };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
