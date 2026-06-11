@@ -35,14 +35,18 @@ async function fetchViaFlareSolverr(url: string, timeoutMs: number): Promise<str
       // Some sites (Newegg) serve a non-Cloudflare block page that
       // FlareSolverr can't solve — don't return it as if it were real
       // content; fall through so local stealth Chromium gets a shot.
+      // IMPORTANT: only small pages can be block pages. Large pages are
+      // real content — their JS bundles legitimately contain phrases like
+      // "access denied", which caused false rejections of good pages.
       const t = html.slice(0, 5000).toLowerCase() + html.slice(-2000).toLowerCase();
       const looksBlocked =
         html.length < 3000 ||
-        t.includes('are you a human') ||
-        t.includes('robot or human') ||
-        t.includes('verify you are a human') ||
-        t.includes('access denied') ||
-        t.includes('request blocked');
+        (html.length < 80000 &&
+          (t.includes('are you a human') ||
+           t.includes('robot or human') ||
+           t.includes('verify you are a human') ||
+           t.includes('access denied') ||
+           t.includes('request blocked')));
       if (looksBlocked) {
         logger.warn(`[FlareSolverr] Response for ${url} looks like a block page (${html.length} bytes) — trying local browser`);
         return null;

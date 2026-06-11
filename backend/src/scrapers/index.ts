@@ -44,7 +44,9 @@ class WithGenericFallback extends BaseScraper {
 scraperRegistry.set('amazon', new WithGenericFallback('amazon', new AmazonScraper()));
 scraperRegistry.set('bestbuy', new WithGenericFallback('bestbuy', new BestBuyScraper()));
 scraperRegistry.set('walmart', new WithGenericFallback('walmart', new WalmartScraper()));
-scraperRegistry.set('target', new WithGenericFallback('target', new TargetScraper()));
+// Target has its own complete pipeline (API → HTML → rendered) — the generic
+// fallback misread stray JSON in Target's page shell as out-of-stock
+scraperRegistry.set('target', new TargetScraper());
 scraperRegistry.set('newegg', new WithGenericFallback('newegg', new NeweggScraper()));
 scraperRegistry.set('gamestop', new WithGenericFallback('gamestop', new GameStopScraper()));
 scraperRegistry.set('ebay', new EbayScraper());

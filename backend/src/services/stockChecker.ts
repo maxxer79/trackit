@@ -644,9 +644,10 @@ export async function fetchProductImage(url: string): Promise<string | null> {
       maxRedirects: 5,
     });
     const img = extractImageFromHtml(response.data);
+    logger.info(`[Image] plain fetch ${url}: ${String(response.data).length} bytes, image ${img ? 'FOUND' : 'not found'}`);
     if (img) return img;
-  } catch {
-    // blocked — try browser below
+  } catch (err: any) {
+    logger.info(`[Image] plain fetch failed for ${url}: ${err.message}`);
   }
 
   // Browser/FlareSolverr fallback for stores that block plain requests
@@ -654,9 +655,14 @@ export async function fetchProductImage(url: string): Promise<string | null> {
   try {
     const { fetchRenderedHtml } = await import('../scrapers/browserFetch');
     const rendered = await fetchRenderedHtml(url);
-    if (rendered) return extractImageFromHtml(rendered);
-  } catch {
-    // give up quietly
+    if (rendered) {
+      const img = extractImageFromHtml(rendered);
+      logger.info(`[Image] rendered fetch ${url}: ${rendered.length} bytes, image ${img ? 'FOUND' : 'not found'}`);
+      return img;
+    }
+    logger.warn(`[Image] rendered fetch returned nothing for ${url}`);
+  } catch (err: any) {
+    logger.warn(`[Image] rendered fetch error for ${url}: ${err.message}`);
   }
   return null;
 }

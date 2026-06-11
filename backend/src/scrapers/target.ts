@@ -1,4 +1,5 @@
 import { BaseScraper, StockResult } from './base';
+import { fetchRenderedHtml } from './browserFetch';
 import logger from '../utils/logger';
 
 export class TargetScraper extends BaseScraper {
@@ -116,18 +117,69 @@ export class TargetScraper extends BaseScraper {
         status = 'UNKNOWN';
       }
 
-      return {
-        storeSlug: this.storeSlug,
-        status,
-        productUrl,
-      };
+      if (status !== 'UNKNOWN') {
+        return { storeSlug: this.storeSlug, status, productUrl };
+      }
+
+      // Target serves a JS shell to plain requests — render the real page
+      return await this.checkViaRendered(productUrl);
     } catch (error: any) {
-      return {
-        storeSlug: this.storeSlug,
-        status: 'UNKNOWN',
-        productUrl,
-        message: error.message,
-      };
+      // Plain fetch failed entirely — try the rendered path before giving up
+      try {
+        return await this.checkViaRendered(productUrl);
+      } catch {
+        return {
+          storeSlug: this.storeSlug,
+          status: 'UNKNOWN',
+          productUrl,
+          message: error.message,
+        };
+      }
     }
+  }
+
+  /**
+   * FlareSolverr / headless Chromium fallback — renders the real PDP and
+   * reads Target-specific signals ONLY (generic text matching on Target's
+   * shell caused false out-of-stock readings).
+   */
+  private async checkViaRendered(productUrl: string): Promise<StockResult> {
+    const html = await fetchRenderedHtml(productUrl);
+    if (!html) {
+      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered fetch failed' };
+    }
+
+    if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) {
+      return { storeSlug: this.storeSlug, status: 'PREORDER', productUrl };
+    }
+    if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) {
+      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+    }
+    if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) {
+      return { storeSlug: this.storeSlug, status: 'IN_STOCK', productUrl };
+    }
+    if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) {
+      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+    }
+
+    const $ = this.loadHtml(html);
+    const outOfStock = $('[data-test="outOfStockMessage"]').length > 0;
+    const addBtn = $('button[data-test="addToCartButton"], button[data-test="shippingButton"]');
+    const btnText = addBtn.first().text().trim().toLowerCase();
+    const btnDisabled = addBtn.first().is('[disabled]');
+
+    logger.info(`[Target rendered] btnText="${btnText}" disabled=${btnDisabled} oos=${outOfStock}`);
+
+    if (outOfStock) {
+      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+    }
+    if (addBtn.length > 0 && !btnDisabled) {
+      const isPre = /pre-?order/.test(btnText);
+      return { storeSlug: this.storeSlug, status: isPre ? 'PREORDER' : 'IN_STOCK', productUrl };
+    }
+    if (addBtn.length > 0 && btnDisabled) {
+      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+    }
+    return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered page had no recognizable Target signals' };
   }
 }
