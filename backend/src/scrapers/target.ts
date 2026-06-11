@@ -15,8 +15,12 @@ export class TargetScraper extends BaseScraper {
         productUrl.match(/A-(\d+)/)?.[1];
 
       if (tcin) {
-        // Target Redsky API — send JSON Accept + browser-like Referer so Target doesn't block us
-        const apiUrl = `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1?tcin=${tcin}&is_bot=false`;
+        // Target Redsky API — requires the public web API key Target's own
+        // frontend sends (missing key = 403), plus JSON Accept + Referer
+        const apiUrl =
+          `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1` +
+          `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
+          `&tcin=${tcin}&pricing_store_id=3991&has_pricing_store_id=true&visitor_id=0100000000000000&is_bot=false`;
         try {
           const response = await this.client.get(apiUrl, {
             headers: {
@@ -42,7 +46,11 @@ export class TargetScraper extends BaseScraper {
 
           let status: StockResult['status'];
 
-          if (isPreorder) {
+          if (availability === 'PRE_ORDER_SELLABLE') {
+            status = 'PREORDER';
+          } else if (availability === 'PRE_ORDER_UNSELLABLE') {
+            status = 'OUT_OF_STOCK';
+          } else if (isPreorder) {
             status = preorderAvailable ? 'PREORDER' : 'OUT_OF_STOCK';
           } else if (availability === 'IN_STOCK') {
             status = 'IN_STOCK';
@@ -72,6 +80,21 @@ export class TargetScraper extends BaseScraper {
 
       // HTML fallback — check disabled state so pre-order with locked button → OUT_OF_STOCK
       const html = await this.fetchPage(productUrl);
+
+      // Target SSR embeds availability_status (snake_case) in __TGT_DATA__
+      if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) {
+        return { storeSlug: this.storeSlug, status: 'PREORDER', productUrl };
+      }
+      if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) {
+        return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+      }
+      if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) {
+        return { storeSlug: this.storeSlug, status: 'IN_STOCK', productUrl };
+      }
+      if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) {
+        return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+      }
+
       const $ = this.loadHtml(html);
 
       const outOfStock = $('[data-test="outOfStockMessage"]').length > 0;

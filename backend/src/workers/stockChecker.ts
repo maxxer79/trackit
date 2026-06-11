@@ -99,7 +99,9 @@ stockCheckerQueue.process(
           }
 
           const wasInStock = listing.inStock;
-          const isNowInStock = result.status === 'IN_STOCK' || result.status === 'LIMITED';
+          // PREORDER counts as in stock — a sellable preorder is buyable
+          const isNowInStock =
+            result.status === 'IN_STOCK' || result.status === 'LIMITED' || result.status === 'PREORDER';
 
           // Update store listing with latest stock info
           await prisma.storeProduct.update({

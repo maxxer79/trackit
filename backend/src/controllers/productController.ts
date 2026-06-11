@@ -199,7 +199,9 @@ export const liveCheckProduct = async (req: Request, res: Response): Promise<voi
       try {
         const scraper = getScraperForStore(sp.store.slug);
         const result = await scraper.checkStock(sp.url, sp.id);
-        const nowInStock = result.status === 'IN_STOCK' || result.status === 'LIMITED';
+        // PREORDER counts as in stock — a sellable preorder is buyable
+        const nowInStock =
+          result.status === 'IN_STOCK' || result.status === 'LIMITED' || result.status === 'PREORDER';
 
         if (result.status === 'UNKNOWN') {
           // Couldn't determine status (bot-block / JS shell) — keep last known

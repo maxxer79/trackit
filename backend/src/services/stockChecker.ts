@@ -686,7 +686,8 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
       return;
     }
 
-    const nowInStock = status === 'IN_STOCK' || status === 'LIMITED';
+    // PREORDER counts as in stock — a sellable preorder is buyable
+    const nowInStock = status === 'IN_STOCK' || status === 'LIMITED' || status === 'PREORDER';
 
     await prisma.storeProduct.update({
       where: { id: storeProductId },

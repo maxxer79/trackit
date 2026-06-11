@@ -31,8 +31,24 @@ async function fetchViaFlareSolverr(url: string, timeoutMs: number): Promise<str
     );
     const solution = resp.data?.solution;
     if (resp.data?.status === 'ok' && solution?.response) {
-      logger.info(`[FlareSolverr] Got ${solution.response.length} bytes (HTTP ${solution.status}) for ${url}`);
-      return solution.response as string;
+      const html: string = solution.response;
+      // Some sites (Newegg) serve a non-Cloudflare block page that
+      // FlareSolverr can't solve — don't return it as if it were real
+      // content; fall through so local stealth Chromium gets a shot.
+      const t = html.slice(0, 5000).toLowerCase() + html.slice(-2000).toLowerCase();
+      const looksBlocked =
+        html.length < 3000 ||
+        t.includes('are you a human') ||
+        t.includes('robot or human') ||
+        t.includes('verify you are a human') ||
+        t.includes('access denied') ||
+        t.includes('request blocked');
+      if (looksBlocked) {
+        logger.warn(`[FlareSolverr] Response for ${url} looks like a block page (${html.length} bytes) — trying local browser`);
+        return null;
+      }
+      logger.info(`[FlareSolverr] Got ${html.length} bytes (HTTP ${solution.status}) for ${url}`);
+      return html;
     }
     logger.warn(`[FlareSolverr] No solution for ${url}: ${resp.data?.message ?? 'unknown'}`);
     return null;

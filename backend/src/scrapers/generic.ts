@@ -297,6 +297,11 @@ export class GenericScraper extends BaseScraper {
     if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?PreOrder"/i.test(html)) return 'PREORDER';
     if (/"availabilityStatus"\s*:\s*"IN_STOCK"/i.test(html)) return 'IN_STOCK';
     if (/"availabilityStatus"\s*:\s*"OUT_OF_STOCK"/i.test(html)) return 'OUT_OF_STOCK';
+    // Target-style snake_case variants (PRE_ORDER_SELLABLE = buyable preorder)
+    if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) return 'PREORDER';
+    if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) return 'OUT_OF_STOCK';
+    if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) return 'IN_STOCK';
+    if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) return 'OUT_OF_STOCK';
     if (/"inStock"\s*:\s*true/i.test(html)) return 'IN_STOCK';
     if (/"inStock"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
     if (/"purchasable"\s*:\s*true/i.test(html)) return 'IN_STOCK';
