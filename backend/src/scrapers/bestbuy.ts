@@ -15,7 +15,8 @@ export class BestBuyScraper extends BaseScraper {
     const skuMatch =
       (storeProductId && /^\d{7,8}$/.test(storeProductId) ? storeProductId : undefined) ||
       productUrl.match(/\/(\d{7,8})\.p/)?.[1] ||
-      productUrl.match(/[?&]skuId=(\d+)/)?.[1];
+      productUrl.match(/[?&]skuId=(\d+)/)?.[1] ||
+      productUrl.match(/\/sku\/(\d{5,9})(?:[/?#]|$)/)?.[1]; // new /product/{name}/{id}/sku/{sku} URLs
 
     if (skuMatch) {
       try {

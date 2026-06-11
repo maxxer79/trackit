@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { BaseScraper, StockResult } from './base';
 
 export class NeweggScraper extends BaseScraper {
@@ -6,6 +7,37 @@ export class NeweggScraper extends BaseScraper {
   }
 
   async checkStock(productUrl: string): Promise<StockResult> {
+    // Newegg exposes a realtime product JSON endpoint keyed by the item
+    // number in /p/{ItemNumber} URLs — much more reliable than HTML when
+    // it responds. Falls through silently if blocked.
+    const itemNumber = productUrl.match(/\/p\/([0-9A-Z]{2,4}-[0-9A-Z]{3,5}-[0-9A-Z]{3,6})/i)?.[1];
+    if (itemNumber) {
+      try {
+        const { data } = await axios.get(
+          `https://www.newegg.com/product/api/ProductRealtime?ItemNumber=${encodeURIComponent(itemNumber)}`,
+          {
+            timeout: 12000,
+            headers: {
+              'User-Agent': this.userAgent,
+              Accept: 'application/json',
+              Referer: productUrl,
+            },
+          }
+        );
+        const main = data?.MainItem ?? data;
+        const instock = main?.Instock ?? main?.InStock ?? data?.Instock;
+        const price = parseFloat(main?.FinalPrice ?? main?.UnitCost ?? '');
+        if (instock === true) {
+          return { storeSlug: this.storeSlug, status: 'IN_STOCK', price: isNaN(price) ? undefined : price, productUrl };
+        }
+        if (instock === false) {
+          return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
+        }
+      } catch {
+        // API blocked — fall through to HTML
+      }
+    }
+
     try {
       const html = await this.fetchPage(productUrl);
 

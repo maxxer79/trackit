@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { BaseScraper, StockResult } from './base';
+import { fetchRenderedHtml } from './browserFetch';
 
 /**
  * eBay Scraper
@@ -9,12 +10,15 @@ import { BaseScraper, StockResult } from './base';
  *
  * Stock logic:
  *   IN_STOCK     = at least 1 active Buy It Now listing found
- *   OUT_OF_STOCK = 0 active listings found
+ *   OUT_OF_STOCK = 0 active listings found (verified genuine empty results)
+ *   UNKNOWN      = blocked / markup unrecognized — keep last known status
  *
  * The scraper automatically appends LH_BIN=1 (Buy It Now filter) to exclude
  * auctions and only track fixed-price listings.
  *
- * Strategy: try RSS feed first (less bot-detection), fall back to HTML scraping.
+ * Strategies: RSS (mostly dead) → plain HTML → FlareSolverr/headless browser.
+ * Listing detection is layout-independent: it counts unique /itm/{id} product
+ * links, falling back from CSS classes eBay keeps redesigning.
  */
 export class EbayScraper extends BaseScraper {
   constructor() {
@@ -44,9 +48,9 @@ export class EbayScraper extends BaseScraper {
       console.log(`[eBay] HTML attempt failed: ${error.message}`);
     }
 
-    // --- Strategy 3: headless Chromium + stealth (beats bot detection) ---
+    // --- Strategy 3: FlareSolverr / headless Chromium (shared queue) ---
     try {
-      return await this.checkViaPuppeteer(searchUrl, productUrl);
+      return await this.checkViaRendered(searchUrl, productUrl);
     } catch (error: any) {
       return {
         storeSlug: this.storeSlug,
@@ -102,7 +106,6 @@ export class EbayScraper extends BaseScraper {
     const response = await axios.get(rssUrl, {
       timeout: 20000,
       headers: {
-        // RSS feeds are intended for feed readers — a simple UA is fine
         'User-Agent': 'Mozilla/5.0 (compatible; Trackit/1.0; +https://github.com/)',
         Accept: 'application/rss+xml, text/xml, application/xml, */*',
         'Accept-Language': 'en-US,en;q=0.9',
@@ -111,22 +114,14 @@ export class EbayScraper extends BaseScraper {
       maxRedirects: 5,
     });
 
-    // axios may auto-parse XML to an object; stringify if so
     const xml: string =
       typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
 
-    const snippet = xml.slice(0, 300).replace(/\s+/g, ' ').trim();
-    console.log(`[eBay] RSS size=${xml.length}, snippet: ${snippet}`);
-
-    // Each eBay listing is an <item> element in the feed
     const itemMatches = xml.match(/<item>/gi);
     const count = itemMatches ? itemMatches.length : 0;
-    console.log(`[eBay] RSS item count: ${count}`);
+    console.log(`[eBay] RSS size=${xml.length}, item count: ${count}`);
 
-    // If the response looks like a bot-block page (no XML structure), return UNKNOWN
-    // so the caller falls through to HTML scraping
     if (!xml.includes('<rss') && !xml.includes('<channel')) {
-      console.log('[eBay] RSS response does not look like valid XML — bot block?');
       return {
         storeSlug: this.storeSlug,
         status: 'UNKNOWN',
@@ -155,10 +150,6 @@ export class EbayScraper extends BaseScraper {
     };
   }
 
-  /**
-   * Scan RSS XML for all dollar-amount prices and return the lowest.
-   * eBay RSS prices appear in <title> as "Item Name $XXX.XX" or in <description>.
-   */
   private extractPricesFromXml(xml: string): number | undefined {
     let lowest: number | undefined;
     const priceRegex = /\$([\d,]+\.?\d*)/g;
@@ -177,7 +168,7 @@ export class EbayScraper extends BaseScraper {
   }
 
   // ---------------------------------------------------------------------------
-  // Strategy 2: HTML scraping
+  // Strategy 2: plain HTML
   // ---------------------------------------------------------------------------
 
   private async checkViaHtml(searchUrl: string, originalUrl: string): Promise<StockResult> {
@@ -210,8 +201,6 @@ export class EbayScraper extends BaseScraper {
     const html: string =
       typeof response.data === 'string' ? response.data : String(response.data);
 
-    // Bot-block / challenge page — we learned NOTHING. Returning
-    // OUT_OF_STOCK here was the source of false "out of stock" flips.
     if (this.isBotBlocked(html)) {
       console.log('[eBay] HTML response is a bot-block/challenge page');
       return {
@@ -222,16 +211,48 @@ export class EbayScraper extends BaseScraper {
       };
     }
 
+    return this.parseResults(html, originalUrl);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strategy 3: FlareSolverr / headless Chromium via shared queue
+  // ---------------------------------------------------------------------------
+
+  private async checkViaRendered(searchUrl: string, originalUrl: string): Promise<StockResult> {
+    const html = await fetchRenderedHtml(searchUrl);
+    if (!html) {
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl: originalUrl,
+        message: 'Browser/FlareSolverr fetch failed',
+      };
+    }
+    if (this.isBotBlocked(html)) {
+      return {
+        storeSlug: this.storeSlug,
+        status: 'UNKNOWN',
+        productUrl: originalUrl,
+        message: 'Bot-challenge even via rendered fetch',
+      };
+    }
+    return this.parseResults(html, originalUrl);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shared results parsing (works on plain or rendered HTML)
+  // ---------------------------------------------------------------------------
+
+  private parseResults(html: string, originalUrl: string): StockResult {
     const $ = this.loadHtml(html);
 
     const bodySnippet = $('body').text().slice(0, 200).replace(/\s+/g, ' ').trim();
-    console.log(`[eBay] HTML body snippet: ${bodySnippet}`);
+    console.log(`[eBay] Body snippet: ${bodySnippet}`);
 
     // eBay is rolling out a new results layout (.s-card) alongside the old
     // one (.s-item) — support both, plus data-attribute fallbacks.
     const ITEM_SEL = '.s-item, .s-card, li[data-listingid], [data-testid="item-card"]';
     const TITLE_SEL = '.s-item__title, .s-card__title, [role="heading"]';
-    console.log(`[eBay] HTML item count: ${$(ITEM_SEL).length}`);
 
     const listingItems = $(ITEM_SEL).filter((_i, el) => {
       const title = $(el).find(TITLE_SEL).first().text().trim();
@@ -246,17 +267,16 @@ export class EbayScraper extends BaseScraper {
       // real listing links to /itm/{id}; eBay can redesign classes but
       // not their listing URLs. Layout-independent.
       const linkCount = this.countItmLinks($);
-      console.log(`[eBay] /itm/ link count: ${linkCount}`);
+      console.log(`[eBay] class-based count: 0, /itm/ link count: ${linkCount}`);
       if (linkCount > 0) {
         count = linkCount;
         lowestPrice = this.extractLowestPriceFromHtml($, $('body'));
       }
     }
 
+    console.log(`[eBay] Listing count: ${count}`);
+
     if (count === 0) {
-      // Only report OUT_OF_STOCK if this is verifiably a genuine empty
-      // results page. Otherwise eBay changed markup or partially blocked
-      // us — return UNKNOWN so the stored status is preserved.
       if (this.isGenuineEmptyResults(html)) {
         return {
           storeSlug: this.storeSlug,
@@ -339,113 +359,4 @@ export class EbayScraper extends BaseScraper {
       t.includes('0 results for')
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Strategy 3: headless Chromium + stealth plugin
-  // ---------------------------------------------------------------------------
-
-  private async checkViaPuppeteer(searchUrl: string, originalUrl: string): Promise<StockResult> {
-    if (EbayScraper.browserBusy) {
-      console.log('[eBay] Browser busy — skipping Puppeteer fallback');
-      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl: originalUrl, message: 'Browser busy' };
-    }
-    EbayScraper.browserBusy = true;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let browser: any;
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const puppeteerExtra = require('puppeteer-extra');
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-      puppeteerExtra.use(StealthPlugin());
-
-      browser = await puppeteerExtra.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-        args: [
-          '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
-          '--disable-gpu', '--window-size=1280,800',
-        ],
-      });
-
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 800 });
-      await page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-      );
-
-      console.log(`[eBay] Puppeteer (stealth) fetching: ${searchUrl}`);
-      await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      await new Promise<void>((r) => setTimeout(r, 3000));
-
-      const result = await page.evaluate(() => {
-        // Old (.s-item) and new (.s-card) eBay results layouts + fallbacks
-        const items = Array.from(
-          document.querySelectorAll('.s-item, .s-card, li[data-listingid], [data-testid="item-card"]')
-        );
-        let realItems = items.filter((el) => {
-          const title = el.querySelector('.s-item__title, .s-card__title, [role="heading"]');
-          const text = title?.textContent?.trim() ?? '';
-          return text.length > 0 && text !== 'Shop on eBay';
-        });
-        // Layout-independent fallback: count unique /itm/{id} listing links
-        let linkCount = 0;
-        if (realItems.length === 0) {
-          const ids = new Set<string>();
-          document.querySelectorAll('a[href*="/itm/"]').forEach((a) => {
-            const m = (a.getAttribute('href') ?? '').match(/\/itm\/(\d{9,})/);
-            if (m) ids.add(m[1]);
-          });
-          linkCount = ids.size;
-        }
-        const bodyText = document.body.innerText.toLowerCase();
-        const genuineEmpty =
-          bodyText.includes('did not match any') ||
-          bodyText.includes('no exact matches found') ||
-          bodyText.includes('0 results');
-        const blocked =
-          bodyText.includes('pardon our interruption') ||
-          bodyText.includes('verify yourself') ||
-          bodyText.includes('reference id');
-        // Lowest price among real items
-        let lowest: number | undefined;
-        for (const el of realItems) {
-          const txt =
-            el.querySelector('.s-item__price, .s-card__price, [class*="price"]')?.textContent ?? '';
-          const m = txt.match(/\$([\d,]+\.?\d*)/);
-          if (m) {
-            const p = parseFloat(m[1].replace(/,/g, ''));
-            if (!isNaN(p) && p > 0 && (lowest === undefined || p < lowest)) lowest = p;
-          }
-        }
-        return { count: realItems.length + linkCount, genuineEmpty, blocked, lowest };
-      });
-
-      console.log(`[eBay] Puppeteer found ${result.count} listing(s), blocked=${result.blocked}`);
-
-      if (result.blocked) {
-        return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl: originalUrl, message: 'Bot-challenge even via headless browser' };
-      }
-      if (result.count > 0) {
-        return {
-          storeSlug: this.storeSlug,
-          status: 'IN_STOCK',
-          price: result.lowest,
-          productUrl: originalUrl,
-          message: `${result.count} active listing${result.count === 1 ? '' : 's'} found`,
-        };
-      }
-      if (result.genuineEmpty) {
-        return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl: originalUrl, message: 'No active Buy It Now listings found' };
-      }
-      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl: originalUrl, message: 'Rendered page had no recognizable results markup' };
-    } finally {
-      EbayScraper.browserBusy = false;
-      if (browser) await browser.close().catch(() => {});
-    }
-  }
-
-  private static browserBusy = false;
 }
