@@ -276,28 +276,37 @@ export class GenericScraper extends BaseScraper {
         if (!offersRaw) continue;
         const offers = Array.isArray(offersRaw) ? offersRaw : [offersRaw];
 
+        // Scan ALL offers (variants/sizes/colors). If ANY variant is
+        // buyable the product is buyable — the first listed variant being
+        // sold out (common on Kohl's etc.) must not mark the product OOS.
+        let sawOos = false;
+        let sawPre = false;
+        let sawLimited = false;
+        let sawIn = false;
+
         for (const offer of offers) {
           const avail: string = String(offer?.availability ?? '').toLowerCase();
           if (!avail) continue;
 
-          if (avail.includes('instock') || avail.includes('limitedavailability')) {
-            status = avail.includes('limited') ? 'LIMITED' : 'IN_STOCK';
-          } else if (
+          if (avail.includes('limitedavailability')) sawLimited = true;
+          else if (avail.includes('instock')) sawIn = true;
+          else if (avail.includes('preorder') || avail.includes('presale')) sawPre = true;
+          else if (
             avail.includes('outofstock') ||
             avail.includes('soldout') ||
-            avail.includes('discontinued')
-          ) {
-            status = 'OUT_OF_STOCK';
-          } else if (avail.includes('preorder') || avail.includes('presale')) {
-            status = 'PREORDER';
-          } else if (avail.includes('backorder')) {
-            status = 'OUT_OF_STOCK';
-          }
+            avail.includes('discontinued') ||
+            avail.includes('backorder')
+          ) sawOos = true;
 
           const p = parseFloat(offer?.price ?? offer?.lowPrice ?? '');
-          if (!isNaN(p) && p > 0) price = p;
-          if (status) break;
+          if (!isNaN(p) && p > 0 && price === undefined) price = p;
         }
+
+        if (sawIn) status = 'IN_STOCK';
+        else if (sawLimited) status = 'LIMITED';
+        else if (sawPre) status = 'PREORDER';
+        else if (sawOos) status = 'OUT_OF_STOCK';
+
         if (status) break;
       }
     });
@@ -310,27 +319,43 @@ export class GenericScraper extends BaseScraper {
    * (Next.js __NEXT_DATA__, Redux preloaded state, Shopify metadata, etc.)
    */
   private parseEmbeddedState(html: string): Status | null {
-    if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?InStock"/i.test(html)) return 'IN_STOCK';
-    if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?OutOfStock"/i.test(html)) return 'OUT_OF_STOCK';
-    if (/"availability"\s*:\s*"(https?:\/\/schema\.org\/)?PreOrder"/i.test(html)) return 'PREORDER';
-    if (/"availabilityStatus"\s*:\s*"IN_STOCK"/i.test(html)) return 'IN_STOCK';
-    if (/"availabilityStatus"\s*:\s*"OUT_OF_STOCK"/i.test(html)) return 'OUT_OF_STOCK';
-    // Target-style snake_case variants (PRE_ORDER_SELLABLE = buyable preorder)
-    if (/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i.test(html)) return 'PREORDER';
-    if (/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i.test(html)) return 'OUT_OF_STOCK';
-    if (/"availability_status"\s*:\s*"IN_STOCK"/i.test(html)) return 'IN_STOCK';
-    if (/"availability_status"\s*:\s*"OUT_OF_STOCK"/i.test(html)) return 'OUT_OF_STOCK';
-    if (/"inStock"\s*:\s*true/i.test(html)) return 'IN_STOCK';
-    if (/"inStock"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
-    if (/"purchasable"\s*:\s*true/i.test(html)) return 'IN_STOCK';
-    if (/"purchasable"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
-    if (/"is_available"\s*:\s*true/i.test(html)) return 'IN_STOCK';
-    if (/"is_available"\s*:\s*false/i.test(html)) return 'OUT_OF_STOCK';
-    // Best Buy embeds availability as button state in hydration JSON
-    if (/"buttonState"\s*:\s*"ADD_TO_CART"/i.test(html)) return 'IN_STOCK';
-    if (/"buttonState"\s*:\s*"SOLD_OUT"/i.test(html)) return 'OUT_OF_STOCK';
-    if (/"buttonState"\s*:\s*"PRE_ORDER"/i.test(html)) return 'PREORDER';
-    return null;
+    // Hydration JSON contains MANY products (recommendations, carousels).
+    // The main product's data appears first in the document, so the
+    // EARLIEST match wins — checking patterns in a fixed order made a
+    // related item's "OUT_OF_STOCK" beat the main item's "inStock":true
+    // (false OOS on LG / Home Depot / Kohl's style pages).
+    const patterns: Array<[RegExp, Status]> = [
+      [/"availability"\s*:\s*"(?:https?:\/\/schema\.org\/)?InStock"/i, 'IN_STOCK'],
+      [/"availability"\s*:\s*"(?:https?:\/\/schema\.org\/)?OutOfStock"/i, 'OUT_OF_STOCK'],
+      [/"availability"\s*:\s*"(?:https?:\/\/schema\.org\/)?PreOrder"/i, 'PREORDER'],
+      [/"availabilityStatus"\s*:\s*"IN_STOCK"/i, 'IN_STOCK'],
+      [/"availabilityStatus"\s*:\s*"OUT_OF_STOCK"/i, 'OUT_OF_STOCK'],
+      [/"availability_status"\s*:\s*"PRE_ORDER_SELLABLE"/i, 'PREORDER'],
+      [/"availability_status"\s*:\s*"PRE_ORDER_UNSELLABLE"/i, 'OUT_OF_STOCK'],
+      [/"availability_status"\s*:\s*"IN_STOCK"/i, 'IN_STOCK'],
+      [/"availability_status"\s*:\s*"OUT_OF_STOCK"/i, 'OUT_OF_STOCK'],
+      [/"inStock"\s*:\s*true/i, 'IN_STOCK'],
+      [/"inStock"\s*:\s*false/i, 'OUT_OF_STOCK'],
+      [/"purchasable"\s*:\s*true/i, 'IN_STOCK'],
+      [/"purchasable"\s*:\s*false/i, 'OUT_OF_STOCK'],
+      [/"is_available"\s*:\s*true/i, 'IN_STOCK'],
+      [/"is_available"\s*:\s*false/i, 'OUT_OF_STOCK'],
+      // Best Buy embeds availability as button state in hydration JSON
+      [/"buttonState"\s*:\s*"ADD_TO_CART"/i, 'IN_STOCK'],
+      [/"buttonState"\s*:\s*"SOLD_OUT"/i, 'OUT_OF_STOCK'],
+      [/"buttonState"\s*:\s*"PRE_ORDER"/i, 'PREORDER'],
+    ];
+
+    let bestIdx = Infinity;
+    let best: Status | null = null;
+    for (const [re, st] of patterns) {
+      const idx = html.search(re);
+      if (idx >= 0 && idx < bestIdx) {
+        bestIdx = idx;
+        best = st;
+      }
+    }
+    return best;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
