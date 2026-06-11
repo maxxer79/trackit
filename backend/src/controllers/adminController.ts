@@ -157,9 +157,9 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
 
 export const createProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, slug, imageUrl, category, description, tags, isFeatured, isNew } = req.body;
+    const { name, slug, imageUrl, category, description, modelNumber, tags, isFeatured, isNew } = req.body;
     const product = await prisma.product.create({
-      data: { name, slug, imageUrl, category, description, tags: tags || [], isFeatured: isFeatured || false, isNew: isNew || false },
+      data: { name, slug, imageUrl, category, description, modelNumber: modelNumber || null, tags: tags || [], isFeatured: isFeatured || false, isNew: isNew || false },
     });
     res.status(201).json(product);
   } catch (error) {

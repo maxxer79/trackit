@@ -16,6 +16,7 @@ interface ProductForm {
   description: string;
   category: string;
   imageUrl: string;
+  modelNumber: string;
   isActive: boolean;
 }
 
@@ -25,6 +26,7 @@ const EMPTY_FORM: ProductForm = {
   description: '',
   category: '',
   imageUrl: '',
+  modelNumber: '',
   isActive: true,
 };
 
@@ -173,6 +175,7 @@ export default function AdminProducts() {
       description: p.description ?? '',
       category: p.category ?? '',
       imageUrl: p.imageUrl ?? '',
+      modelNumber: (p as any).modelNumber ?? '',
       isActive: (p as any).isActive ?? true,
     });
     setShowModal(true);
@@ -395,6 +398,16 @@ export default function AdminProducts() {
             />
           </div>
           <div>
+            <label className="block text-footnote font-semibold text-dark-label2 mb-2">Model / SKU Number</label>
+            <input
+              type="text"
+              value={form.modelNumber}
+              onChange={(e) => setForm((f) => ({ ...f, modelNumber: e.target.value }))}
+              className="input font-mono text-sm"
+              placeholder="Optional — e.g. F9018, DP-UB820-K"
+            />
+          </div>
+          <div>
             <label className="block text-footnote font-semibold text-dark-label2 mb-2">Image URL</label>
             <div className="flex gap-2 mb-2">
               <input
@@ -527,7 +540,7 @@ export default function AdminProducts() {
                 <select value={storeForm.storeId} onChange={(e) => setStoreForm(f => ({ ...f, storeId: e.target.value }))}
                   className="input">
                   <option value="">Select a store…</option>
-                  {(allStores as any[]).map((s: any) => (
+                  {[...(allStores as any[])].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((s: any) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>

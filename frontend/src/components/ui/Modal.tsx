@@ -45,7 +45,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
           <motion.div
             className={clsx(
               'relative w-full bg-dark-surface1 border border-dark-separator rounded-apple-xl',
-              'shadow-apple-xl overflow-hidden z-10',
+              'shadow-apple-xl overflow-hidden z-10 max-h-[90vh] flex flex-col',
               size === 'sm' && 'max-w-sm',
               size === 'md' && 'max-w-lg',
               size === 'lg' && 'max-w-2xl',
@@ -69,7 +69,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
                 </button>
               </div>
             )}
-            <div className="p-6">{children}</div>
+            <div className="p-6 overflow-y-auto flex-1 min-h-0">{children}</div>
           </motion.div>
         </div>
       )}

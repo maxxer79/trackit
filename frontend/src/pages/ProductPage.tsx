@@ -231,6 +231,9 @@ export default function ProductPage() {
           <p className="text-footnote text-apple-blue font-semibold capitalize mb-1">{product.category}</p>
           <h1 className="text-title2 font-bold text-dark-label1 leading-tight mb-2">{product.name}</h1>
           {product.description && <p className="text-footnote text-dark-label2 leading-relaxed">{product.description}</p>}
+          {(product as any).modelNumber && (
+            <p className="text-caption1 text-dark-label3 mt-1">Model / SKU: <span className="font-mono text-dark-label2">{(product as any).modelNumber}</span></p>
+          )}
           {(product.trackingCount ?? 0) > 0 && (
             <p className="text-caption2 text-dark-label3 mt-1">{(product.trackingCount ?? 0).toLocaleString()} people tracking</p>
           )}

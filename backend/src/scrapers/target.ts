@@ -182,6 +182,16 @@ export class TargetScraper extends BaseScraper {
     if (addBtn.length > 0 && btnDisabled) {
       return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', productUrl };
     }
+
+    // Diagnostics: log what availability-ish strings the page DID contain
+    // so we can extend detection without guessing.
+    const hints = Array.from(new Set([
+      ...(html.match(/"availability[_a-zA-Z]*"\s*:\s*"[A-Za-z_]+"/g) ?? []),
+      ...(html.match(/schema\.org\/[A-Za-z]+/g) ?? []),
+      ...(html.match(/"(?:button_state|purchasability|sellable[_a-zA-Z]*)"\s*:\s*"?[A-Za-z_]+"?/g) ?? []),
+    ])).slice(0, 15);
+    logger.info(`[Target rendered] no signals recognized; page hints: ${hints.join(' | ') || 'NONE'}`);
+
     return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Rendered page had no recognizable Target signals' };
   }
 }

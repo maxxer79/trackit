@@ -46,6 +46,7 @@ model Product {
   imageUrl    String?
   category    String?
   description String?
+  modelNumber String?
   tags        String[]
   isActive    Boolean  @default(true)
   isNew       Boolean  @default(false)

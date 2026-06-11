@@ -109,8 +109,23 @@ initSocket(httpServer);
 
 const PORT = parseInt(process.env.PORT || '3001');
 
+/**
+ * Idempotent additive schema sync — the container doesn't run prisma
+ * migrations on boot, so new optional columns are added here.
+ */
+async function ensureSchema(): Promise<void> {
+  try {
+    const { prisma } = await import('./config/database');
+    await prisma.$executeRawUnsafe('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "modelNumber" TEXT');
+    console.log('Schema sync complete');
+  } catch (err: any) {
+    console.error('Schema sync failed:', err.message);
+  }
+}
+
 httpServer.listen(PORT, async () => {
   console.log(`🚀 TrackIt backend v${BACKEND_VERSION} running on port ${PORT}`);
+  await ensureSchema();
   console.log(`📡 Socket.io initialized`);
 
   // Start stock checker worker and schedule all active products.

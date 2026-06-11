@@ -1,2 +1,2 @@
 // Bumped with every release alongside frontend/src/version.ts
-export const BACKEND_VERSION = '1.4.33';
+export const BACKEND_VERSION = '1.4.34';

@@ -101,7 +101,7 @@ export class GenericScraper extends BaseScraper {
         return {
           storeSlug: this.storeSlug,
           status: schema.status,
-          price: schema.price ?? this.extractPrice($),
+          price: schema.price ?? this.extractPrice($) ?? this.extractPriceFromJson(html),
           productUrl,
         };
       }
@@ -112,7 +112,7 @@ export class GenericScraper extends BaseScraper {
         return {
           storeSlug: this.storeSlug,
           status: embedded,
-          price: this.extractPrice($),
+          price: this.extractPrice($) ?? this.extractPriceFromJson(html),
           productUrl,
         };
       }
@@ -123,7 +123,7 @@ export class GenericScraper extends BaseScraper {
         return {
           storeSlug: this.storeSlug,
           status: micro,
-          price: this.extractPrice($),
+          price: this.extractPrice($) ?? this.extractPriceFromJson(html),
           productUrl,
         };
       }
@@ -144,13 +144,18 @@ export class GenericScraper extends BaseScraper {
       // Scan all clickable elements case-INSENSITIVELY (sites like
       // BigBadToyStore render "ADD TO CART" in caps; cheerio :contains is
       // case-sensitive and used to miss it).
-      let enabledCartBtn = false;
-      let disabledCartBtn = false;
-      let oosButton = false;
-      let preorderBtn = false;
+      //
+      // Record the DOCUMENT-ORDER POSITION of the first signal of each
+      // kind. Product pages put the main item's buy area at the top and
+      // related-product carousels (full of "Notify Me" buttons — see MSI)
+      // below it. The earliest signal belongs to the actual product.
+      let buyIdx = -1;
+      let disabledIdx = -1;
+      let oosIdx = -1;
+      let preIdx = -1;
 
       $('button, a, input[type="submit"], [role="button"], [class*="add-to-cart"], [data-action="add-to-cart"]').each(
-        (_i: number, el: any) => {
+        (i: number, el: any) => {
           const text = ($(el).text() || $(el).attr('value') || '').toLowerCase().replace(/\s+/g, ' ').trim();
           if (!text || text.length > 80) return; // skip empty / giant containers
           const disabled =
@@ -166,15 +171,21 @@ export class GenericScraper extends BaseScraper {
           // mentions sold out — only count it as an OOS *button* when it's
           // purely an availability label, not a nav/variation link.
           if (isBuy && !isOos) {
-            if (disabled) disabledCartBtn = true;
-            else enabledCartBtn = true;
+            if (disabled) { if (disabledIdx < 0) disabledIdx = i; }
+            else if (buyIdx < 0) buyIdx = i;
           } else if (isPre && !disabled) {
-            preorderBtn = true;
+            if (preIdx < 0) preIdx = i;
           } else if (isOos && /^(notify me( when available)?|email me when available|out of stock|sold out|currently unavailable)$/.test(text)) {
-            oosButton = true;
+            if (oosIdx < 0) oosIdx = i;
           }
         }
       );
+
+      const before = (a: number, b: number) => a >= 0 && (b < 0 || a < b);
+      const enabledCartBtn = before(buyIdx, oosIdx) && before(buyIdx, disabledIdx);
+      const preorderBtn = preIdx >= 0 && before(preIdx, oosIdx);
+      const oosButton = before(oosIdx, buyIdx) && before(oosIdx, preIdx);
+      const disabledCartBtn = before(disabledIdx, buyIdx);
 
       // "in stock" as standalone text (e.g. BBTS's "IN STOCK" heading) —
       // but never count phrases about FUTURE stock ("back in stock",
@@ -216,7 +227,7 @@ export class GenericScraper extends BaseScraper {
       return {
         storeSlug: this.storeSlug,
         status,
-        price: this.extractPrice($),
+        price: this.extractPrice($) ?? this.extractPriceFromJson(html),
         productUrl,
       };
     } catch (error: any) {
@@ -345,5 +356,20 @@ export class GenericScraper extends BaseScraper {
       $('[itemprop="price"]').first().text() ||
       $('[class*="price"]').first().text();
     return priceText ? this.parsePrice(priceText) : undefined;
+  }
+
+  /**
+   * Last-resort price from hydration JSON — keeps prices fresh even when
+   * the DOM has no parseable price element.
+   */
+  protected extractPriceFromJson(html: string): number | undefined {
+    const m = html.match(
+      /"(?:current_retail|currentPrice|customerPrice|salePrice|finalPrice|price)"\s*:\s*"?(\d{1,6}(?:\.\d{1,2})?)"?/i
+    );
+    if (m) {
+      const p = parseFloat(m[1]);
+      if (!isNaN(p) && p > 0) return p;
+    }
+    return undefined;
   }
 }
