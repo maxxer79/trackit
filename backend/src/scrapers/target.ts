@@ -93,10 +93,18 @@ export class TargetScraper extends BaseScraper {
   }
 
   private redskyUrl(tcin: string): string {
+    // Fulfillment/shipping availability is only included when the request
+    // carries store + location context (zip/state/lat/long), like Target's
+    // own frontend sends.
     return (
       `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1` +
       `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
-      `&tcin=${tcin}&pricing_store_id=3991&has_pricing_store_id=true&visitor_id=0100000000000000&is_bot=false`
+      `&tcin=${tcin}` +
+      `&store_id=3991&pricing_store_id=3991&has_pricing_store_id=true` +
+      `&scheduled_delivery_store_id=3991` +
+      `&zip=55403&state=MN&latitude=44.970&longitude=-93.280` +
+      `&has_financing_options=true&visitor_id=0100000000000000&channel=WEB` +
+      `&page=%2Fp%2FA-${tcin}&is_bot=false`
     );
   }
 
@@ -104,13 +112,25 @@ export class TargetScraper extends BaseScraper {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private mapRedsky(tcin: string, data: any, productUrl: string): StockResult | null {
     const product = data?.data?.product;
-    const fulfillment = product?.fulfillment;
-    const availability = fulfillment?.shipping_options?.availability_status;
-    const price = product?.price?.current_retail;
+    // Fulfillment may live on the product itself, on the first child
+    // (bundles / variation parents), or as available_to_promise_network
+    const child = Array.isArray(product?.children) ? product.children[0] : undefined;
+    const fulfillment = product?.fulfillment ?? child?.fulfillment;
+    const availability =
+      fulfillment?.shipping_options?.availability_status ??
+      product?.available_to_promise_network?.availability ??
+      child?.available_to_promise_network?.availability;
+    const price = product?.price?.current_retail ?? child?.price?.current_retail;
 
     logger.info(`[Target TCIN:${tcin}] availability=${availability} preorder=${JSON.stringify(fulfillment?.preorder)}`);
 
-    if (!availability && !fulfillment?.preorder) return null;
+    if (!availability && !fulfillment?.preorder) {
+      // Log the response shape so detection can be extended without guessing
+      logger.info(
+        `[Target TCIN:${tcin}] no availability in response; product keys=[${Object.keys(product ?? {}).join(',')}] fulfillment keys=[${Object.keys(fulfillment ?? {}).join(',')}]`
+      );
+      return null;
+    }
 
     // is_preorder=true + is_available_for_preorder=true  → PREORDER (button clickable)
     // is_preorder=true + is_available_for_preorder=false → OUT_OF_STOCK (button disabled)
@@ -175,7 +195,16 @@ export class TargetScraper extends BaseScraper {
         .replace(/&gt;/g, '>');
       const data = JSON.parse(jsonText);
       logger.info(`[Target] Browser-based Redsky fetch SUCCEEDED for TCIN ${tcin}`);
-      return this.mapRedsky(tcin, data, productUrl);
+      const mapped = this.mapRedsky(tcin, data, productUrl);
+      if (mapped) return mapped;
+      // Structured paths missed it — regex the raw JSON for availability
+      // markers anywhere in the response (catches schema changes)
+      const embedded = this.detectEmbedded(body);
+      if (embedded) {
+        logger.info(`[Target TCIN:${tcin}] availability found via raw-JSON regex: ${embedded}`);
+        return { storeSlug: this.storeSlug, status: embedded, productUrl };
+      }
+      return null;
     } catch (err: any) {
       logger.warn(`[Target] Browser-based Redsky JSON parse failed for TCIN ${tcin}: ${err.message}`);
       return null;
