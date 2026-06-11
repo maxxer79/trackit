@@ -16,12 +16,9 @@ export class TargetScraper extends BaseScraper {
         productUrl.match(/A-(\d+)/)?.[1];
 
       if (tcin) {
-        // Target Redsky API — requires the public web API key Target's own
-        // frontend sends (missing key = 403), plus JSON Accept + Referer
-        const apiUrl =
-          `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1` +
-          `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
-          `&tcin=${tcin}&pricing_store_id=3991&has_pricing_store_id=true&visitor_id=0100000000000000&is_bot=false`;
+        const apiUrl = this.redskyUrl(tcin);
+
+        // Attempt 1: direct API call (fast when Target accepts it)
         try {
           const response = await this.client.get(apiUrl, {
             headers: {
@@ -30,53 +27,17 @@ export class TargetScraper extends BaseScraper {
               Origin: 'https://www.target.com',
             },
           });
-          const product = response.data?.data?.product;
-          const fulfillment = product?.fulfillment;
-          const availability = fulfillment?.shipping_options?.availability_status;
-          const price = product?.price?.current_retail;
-
-          logger.info(`[Target TCIN:${tcin}] availability=${availability} preorder=${JSON.stringify(fulfillment?.preorder)}`);
-
-          // is_preorder=true + is_available_for_preorder=true  → PREORDER (button clickable)
-          // is_preorder=true + is_available_for_preorder=false → OUT_OF_STOCK (button disabled)
-          const isPreorder: boolean =
-            fulfillment?.preorder?.is_preorder === true ||
-            availability === 'PREORDER';
-          const preorderAvailable: boolean =
-            fulfillment?.preorder?.is_available_for_preorder !== false;
-
-          let status: StockResult['status'];
-
-          if (availability === 'PRE_ORDER_SELLABLE') {
-            status = 'PREORDER';
-          } else if (availability === 'PRE_ORDER_UNSELLABLE') {
-            status = 'OUT_OF_STOCK';
-          } else if (isPreorder) {
-            status = preorderAvailable ? 'PREORDER' : 'OUT_OF_STOCK';
-          } else if (availability === 'IN_STOCK') {
-            status = 'IN_STOCK';
-          } else if (
-            availability === 'OUT_OF_STOCK' ||
-            availability === 'UNAVAILABLE' ||
-            availability === 'NOT_SOLD_IN_STORE'
-          ) {
-            status = 'OUT_OF_STOCK';
-          } else if (availability === 'BACKORDER') {
-            status = 'OUT_OF_STOCK';
-          } else {
-            status = 'UNKNOWN';
-          }
-
-          return {
-            storeSlug: this.storeSlug,
-            status,
-            price: price ? parseFloat(price) : undefined,
-            productUrl,
-          };
+          const result = this.mapRedsky(tcin, response.data, productUrl);
+          if (result) return result;
         } catch (apiErr: any) {
-          logger.warn(`[Target] Redsky API failed for TCIN ${tcin}, falling back to HTML: ${apiErr.message}`);
-          // Fall through to HTML
+          logger.warn(`[Target] Redsky API failed for TCIN ${tcin}: ${apiErr.message}`);
         }
+
+        // Attempt 2: same API fetched THROUGH the browser (FlareSolverr /
+        // Chromium) — Target's page never embeds availability; the data
+        // exists ONLY behind this API, which 403s non-browser clients.
+        const result = await this.checkRedskyViaBrowser(tcin, productUrl);
+        if (result) return result;
       }
 
       // HTML fallback — check disabled state so pre-order with locked button → OUT_OF_STOCK
@@ -128,6 +89,96 @@ export class TargetScraper extends BaseScraper {
           message: error.message,
         };
       }
+    }
+  }
+
+  private redskyUrl(tcin: string): string {
+    return (
+      `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1` +
+      `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
+      `&tcin=${tcin}&pricing_store_id=3991&has_pricing_store_id=true&visitor_id=0100000000000000&is_bot=false`
+    );
+  }
+
+  /** Map a Redsky pdp_client_v1 response to a stock result (null = no data). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private mapRedsky(tcin: string, data: any, productUrl: string): StockResult | null {
+    const product = data?.data?.product;
+    const fulfillment = product?.fulfillment;
+    const availability = fulfillment?.shipping_options?.availability_status;
+    const price = product?.price?.current_retail;
+
+    logger.info(`[Target TCIN:${tcin}] availability=${availability} preorder=${JSON.stringify(fulfillment?.preorder)}`);
+
+    if (!availability && !fulfillment?.preorder) return null;
+
+    // is_preorder=true + is_available_for_preorder=true  → PREORDER (button clickable)
+    // is_preorder=true + is_available_for_preorder=false → OUT_OF_STOCK (button disabled)
+    const isPreorder: boolean =
+      fulfillment?.preorder?.is_preorder === true || availability === 'PREORDER';
+    const preorderAvailable: boolean =
+      fulfillment?.preorder?.is_available_for_preorder !== false;
+
+    let status: StockResult['status'];
+
+    if (availability === 'PRE_ORDER_SELLABLE') {
+      status = 'PREORDER';
+    } else if (availability === 'PRE_ORDER_UNSELLABLE') {
+      status = 'OUT_OF_STOCK';
+    } else if (isPreorder) {
+      status = preorderAvailable ? 'PREORDER' : 'OUT_OF_STOCK';
+    } else if (availability === 'IN_STOCK') {
+      status = 'IN_STOCK';
+    } else if (
+      availability === 'OUT_OF_STOCK' ||
+      availability === 'UNAVAILABLE' ||
+      availability === 'NOT_SOLD_IN_STORE' ||
+      availability === 'BACKORDER'
+    ) {
+      status = 'OUT_OF_STOCK';
+    } else {
+      return null;
+    }
+
+    return {
+      storeSlug: this.storeSlug,
+      status,
+      price: price ? parseFloat(price) : undefined,
+      productUrl,
+    };
+  }
+
+  /**
+   * Fetch the Redsky API through FlareSolverr / Chromium so the request
+   * comes from a real browser context. The response arrives as an HTML
+   * page wrapping the JSON — extract and parse it.
+   */
+  private async checkRedskyViaBrowser(tcin: string, productUrl: string): Promise<StockResult | null> {
+    const body = await fetchRenderedHtml(this.redskyUrl(tcin));
+    if (!body) {
+      logger.warn(`[Target] Browser-based Redsky fetch failed for TCIN ${tcin}`);
+      return null;
+    }
+    const start = body.indexOf('{');
+    const end = body.lastIndexOf('}');
+    if (start < 0 || end <= start) {
+      logger.warn(`[Target] Browser-based Redsky response had no JSON for TCIN ${tcin} (${body.length} bytes)`);
+      return null;
+    }
+    try {
+      // Strip HTML entities the browser may have introduced around the JSON
+      const jsonText = body
+        .slice(start, end + 1)
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+      const data = JSON.parse(jsonText);
+      logger.info(`[Target] Browser-based Redsky fetch SUCCEEDED for TCIN ${tcin}`);
+      return this.mapRedsky(tcin, data, productUrl);
+    } catch (err: any) {
+      logger.warn(`[Target] Browser-based Redsky JSON parse failed for TCIN ${tcin}: ${err.message}`);
+      return null;
     }
   }
 

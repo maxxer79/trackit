@@ -70,7 +70,27 @@ export interface RenderOptions {
   skipFlareSolverr?: boolean;
 }
 
-export function fetchRenderedHtml(url: string, timeoutMs = 40000, opts: RenderOptions = {}): Promise<string | null> {
+/**
+ * Strip ad-tracking params (utm_*, gclid, …) before fetching. Long
+ * Google-Ads URLs are a bot-detection red flag (GameStop's Cloudflare
+ * started hard-blocking them) and bust per-URL caches.
+ */
+function cleanTrackingParams(url: string): string {
+  try {
+    const u = new URL(url);
+    const junk = [...u.searchParams.keys()].filter((k) =>
+      /^(utm_|gad_|itm_)/i.test(k) ||
+      /^(gclid|gclsrc|gbraid|wbraid|cmpid|camptype|fbclid|msclkid)$/i.test(k)
+    );
+    junk.forEach((k) => u.searchParams.delete(k));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+export function fetchRenderedHtml(rawUrl: string, timeoutMs = 40000, opts: RenderOptions = {}): Promise<string | null> {
+  const url = cleanTrackingParams(rawUrl);
   const run = async (): Promise<string | null> => {
     // Strategy 1: FlareSolverr (if configured) — best against Cloudflare
     if (!opts.skipFlareSolverr) {
