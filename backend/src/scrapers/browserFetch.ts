@@ -132,6 +132,75 @@ function cleanTrackingParams(url: string): string {
   }
 }
 
+/**
+ * Fetch a JSON API URL through a real Chromium navigation and return the
+ * RAW response body — NOT the rendered page. Chrome's JSON viewer
+ * virtualizes large documents (Target's 249KB fulfillment response), so the
+ * rendered HTML is incomplete; the navigation response object gives us the
+ * untouched bytes. Serialized through the same queue as fetchRenderedHtml.
+ */
+export function fetchRawJson(rawUrl: string, timeoutMs = 40000): Promise<any | null> {
+  const url = cleanTrackingParams(rawUrl);
+  const run = async (): Promise<any | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let browser: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const puppeteerExtra = require('puppeteer-extra');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+      puppeteerExtra.use(StealthPlugin());
+
+      browser = await puppeteerExtra.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+        args: [
+          '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote',
+          '--disable-gpu', '--window-size=1280,800',
+        ],
+      });
+
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      );
+      await page.setExtraHTTPHeaders({ Accept: 'application/json, text/plain, */*' });
+
+      logger.info(`[BrowserFetch] Raw JSON fetch ${url}`);
+      const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+      if (!resp) {
+        logger.warn(`[BrowserFetch] Raw JSON fetch got no response for ${url}`);
+        return null;
+      }
+      const status = resp.status();
+      const text: string = await resp.text();
+      logger.info(`[BrowserFetch] Raw JSON HTTP ${status}, ${text.length} bytes for ${url}`);
+      // Strip a Chrome JSON-viewer wrapper if the response came pre-rendered
+      const trimmed = text.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          return JSON.parse(trimmed);
+        } catch (e: any) {
+          logger.warn(`[BrowserFetch] Raw JSON parse failed: ${e.message}`);
+          return null;
+        }
+      }
+      // Sometimes the body is HTML-wrapped even here — reuse the extractor
+      return extractJsonFromRendered(text);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[BrowserFetch] Raw JSON fetch failed for ${url}: ${msg}`);
+      return null;
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+  };
+  const result = queue.then(run, run);
+  queue = result.catch(() => {});
+  return result;
+}
+
 export function fetchRenderedHtml(rawUrl: string, timeoutMs = 40000, opts: RenderOptions = {}): Promise<string | null> {
   const url = cleanTrackingParams(rawUrl);
   const run = async (): Promise<string | null> => {

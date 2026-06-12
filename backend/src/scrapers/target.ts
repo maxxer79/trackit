@@ -1,5 +1,5 @@
 import { BaseScraper, StockResult } from './base';
-import { fetchRenderedHtml, extractJsonFromRendered } from './browserFetch';
+import { fetchRenderedHtml, extractJsonFromRendered, fetchRawJson } from './browserFetch';
 import logger from '../utils/logger';
 
 export class TargetScraper extends BaseScraper {
@@ -112,14 +112,31 @@ export class TargetScraper extends BaseScraper {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private mapRedsky(tcin: string, data: any, productUrl: string): StockResult | null {
     const product = data?.data?.product;
-    // Fulfillment may live on the product itself, on the first child
-    // (bundles / variation parents), or as available_to_promise_network
-    const child = Array.isArray(product?.children) ? product.children[0] : undefined;
-    const fulfillment = product?.fulfillment ?? child?.fulfillment;
-    const availability =
-      fulfillment?.shipping_options?.availability_status ??
-      product?.available_to_promise_network?.availability ??
-      child?.available_to_promise_network?.availability;
+    // Fulfillment may live on the product itself, on ANY child (bundles /
+    // variation parents carry many), or as available_to_promise_network.
+    // Scan all candidates; any sellable one wins (mirrors target.com, which
+    // shows the buy button if any variant ships).
+    const children: any[] = Array.isArray(product?.children) ? product.children : [];
+    const candidates = [product, ...children].filter(Boolean);
+    let fulfillment: any;
+    let availability: string | undefined;
+    for (const c of candidates) {
+      const f = c?.fulfillment;
+      const a =
+        f?.shipping_options?.availability_status ??
+        c?.available_to_promise_network?.availability;
+      if (!fulfillment && (f || a)) {
+        fulfillment = f;
+        availability = a;
+      }
+      // Prefer a sellable candidate over the first one found
+      if (a === 'IN_STOCK' || a === 'PRE_ORDER_SELLABLE' || f?.preorder?.is_available_for_preorder === true) {
+        fulfillment = f;
+        availability = a;
+        break;
+      }
+    }
+    const child = children[0];
     const price = product?.price?.current_retail ?? child?.price?.current_retail;
 
     logger.info(`[Target TCIN:${tcin}] availability=${availability} preorder=${JSON.stringify(fulfillment?.preorder)}`);
@@ -182,9 +199,19 @@ export class TargetScraper extends BaseScraper {
     );
   }
 
-  /** Fetch a Redsky API URL through FlareSolverr / Chromium and parse the JSON. */
+  /** Fetch a Redsky API URL through a real browser and parse the JSON. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async fetchJsonViaBrowser(apiUrl: string, label: string): Promise<{ data: any; raw: string } | null> {
+    // Preferred: grab the RAW network response via puppeteer. Chrome's JSON
+    // viewer virtualizes big documents (fulfillment_v1 is ~250KB), so the
+    // rendered-HTML route returns an incomplete body that never parses.
+    const rawData = await fetchRawJson(apiUrl);
+    if (rawData) {
+      return { data: rawData, raw: JSON.stringify(rawData) };
+    }
+
+    // Fallback: FlareSolverr rendered page + extraction (works for small
+    // responses like client_v1)
     const body = await fetchRenderedHtml(apiUrl);
     if (!body) {
       logger.warn(`[Target] Browser-based ${label} fetch failed`);
