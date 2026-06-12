@@ -63,6 +63,85 @@ async function fetchViaFlareSolverr(url: string, timeoutMs: number): Promise<str
   }
 }
 
+export interface SolverrSession {
+  cookieHeader: string;
+  userAgent: string;
+}
+
+/**
+ * Solve a URL with FlareSolverr and return its session cookies + user agent.
+ * Akamai/Cloudflare trust lives in those cookies (_abck, bm_sz, ak_bmsc,
+ * cf_clearance) - replaying them in a plain axios request from the same IP
+ * inherits the trust without the headless-Chromium fingerprint.
+ */
+export async function getSolverrSession(url: string, timeoutMs = 40000): Promise<SolverrSession | null> {
+  const base = process.env.FLARESOLVERR_URL;
+  if (!base) return null;
+  try {
+    const resp = await axios.post(
+      `${base.replace(/\/$/, '')}/v1`,
+      { cmd: 'request.get', url, maxTimeout: timeoutMs },
+      { timeout: timeoutMs + 15000, headers: { 'Content-Type': 'application/json' } }
+    );
+    const sol = resp.data?.solution;
+    if (resp.data?.status === 'ok' && Array.isArray(sol?.cookies)) {
+      const cookieHeader = sol.cookies
+        .map((c: { name: string; value: string }) => `${c.name}=${c.value}`)
+        .join('; ');
+      logger.info(`[FlareSolverr] Session for ${url}: ${sol.cookies.length} cookies (HTTP ${sol.status})`);
+      return { cookieHeader, userAgent: sol.userAgent || '' };
+    }
+    logger.warn(`[FlareSolverr] No session for ${url}: ${resp.data?.message ?? 'unknown'}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`[FlareSolverr] Session fetch failed for ${url}: ${msg}`);
+  }
+  return null;
+}
+
+/**
+ * Fetch a JSON API by replaying a FlareSolverr-validated session in a plain
+ * axios GET. Returns the COMPLETE raw body (no JSON-viewer virtualization)
+ * with a fingerprint the bot-wall already accepted.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchJsonWithSolverrCookies(url: string, timeoutMs = 40000): Promise<any | null> {
+  const session = await getSolverrSession(url, timeoutMs);
+  if (!session) return null;
+  try {
+    const resp = await axios.get(url, {
+      timeout: 20000,
+      headers: {
+        Cookie: session.cookieHeader,
+        'User-Agent':
+          session.userAgent ||
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      validateStatus: () => true,
+      transformResponse: [(d: unknown) => d],
+    });
+    const text: string = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data ?? '');
+    logger.info(`[BrowserFetch] Cookie-replay HTTP ${resp.status}, ${text.length} bytes for ${url}`);
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.warn(`[BrowserFetch] Cookie-replay parse failed: ${msg}; sample="${trimmed.slice(0, 200)}"`);
+      }
+    } else if (text) {
+      logger.warn(`[BrowserFetch] Cookie-replay body not JSON; sample="${trimmed.slice(0, 200)}"`);
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`[BrowserFetch] Cookie-replay failed for ${url}: ${msg}`);
+  }
+  return null;
+}
+
 export interface RenderOptions {
   /** CSS selector to wait for after page load (local Chromium only) */
   waitSelector?: string;

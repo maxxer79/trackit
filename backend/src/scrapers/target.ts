@@ -1,5 +1,5 @@
 import { BaseScraper, StockResult } from './base';
-import { fetchRenderedHtml, extractJsonFromRendered, fetchRawJson } from './browserFetch';
+import { fetchRenderedHtml, extractJsonFromRendered, fetchRawJson, fetchJsonWithSolverrCookies } from './browserFetch';
 import logger from '../utils/logger';
 
 export class TargetScraper extends BaseScraper {
@@ -202,7 +202,15 @@ export class TargetScraper extends BaseScraper {
   /** Fetch a Redsky API URL through a real browser and parse the JSON. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async fetchJsonViaBrowser(apiUrl: string, label: string): Promise<{ data: any; raw: string } | null> {
-    // Preferred: grab the RAW network response via puppeteer. Chrome's JSON
+    // Preferred: FlareSolverr solves the URL (it reliably gets HTTP 200 where
+    // our Chromium gets 403/410), then replay its cookies in a plain GET for
+    // the complete raw body - no JSON-viewer virtualization.
+    const replayed = await fetchJsonWithSolverrCookies(apiUrl);
+    if (replayed) {
+      return { data: replayed, raw: JSON.stringify(replayed) };
+    }
+
+    // Next: grab the RAW network response via puppeteer. Chrome's JSON
     // viewer virtualizes big documents (fulfillment_v1 is ~250KB), so the
     // rendered-HTML route returns an incomplete body that never parses.
     const rawData = await fetchRawJson(apiUrl);
