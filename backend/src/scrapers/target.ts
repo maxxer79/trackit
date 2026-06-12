@@ -1,5 +1,5 @@
 import { BaseScraper, StockResult } from './base';
-import { fetchRenderedHtml } from './browserFetch';
+import { fetchRenderedHtml, extractJsonFromRendered } from './browserFetch';
 import logger from '../utils/logger';
 
 export class TargetScraper extends BaseScraper {
@@ -190,24 +190,12 @@ export class TargetScraper extends BaseScraper {
       logger.warn(`[Target] Browser-based ${label} fetch failed`);
       return null;
     }
-    const start = body.indexOf('{');
-    const end = body.lastIndexOf('}');
-    if (start < 0 || end <= start) {
-      logger.warn(`[Target] Browser-based ${label} response had no JSON (${body.length} bytes)`);
+    const data = extractJsonFromRendered(body);
+    if (!data) {
+      logger.warn(`[Target] Browser-based ${label} response had no parseable JSON (${body.length} bytes)`);
       return null;
     }
-    try {
-      const jsonText = body
-        .slice(start, end + 1)
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
-      return { data: JSON.parse(jsonText), raw: body };
-    } catch (err: any) {
-      logger.warn(`[Target] Browser-based ${label} JSON parse failed: ${err.message}`);
-      return null;
-    }
+    return { data, raw: body };
   }
 
   /**

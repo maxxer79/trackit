@@ -197,7 +197,7 @@ export const liveCheckProduct = async (req: Request, res: Response): Promise<voi
 
     const promises = product.storeListings.map(async (sp: any) => {
       try {
-        const scraper = getScraperForStore(sp.store.slug);
+        const scraper = getScraperForStore(sp.store.slug, sp.url);
         const result = await scraper.checkStock(sp.url, sp.id);
         // PREORDER counts as in stock — a sellable preorder is buyable
         const nowInStock =

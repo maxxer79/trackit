@@ -13,7 +13,7 @@
  */
 import axios from 'axios';
 import { BaseScraper, StockResult } from './base';
-import { fetchRenderedHtml } from './browserFetch';
+import { fetchRenderedHtml, extractJsonFromRendered } from './browserFetch';
 import logger from '../utils/logger';
 
 const STORE = process.env.LOWES_STORE_ID || '0592';
@@ -72,21 +72,13 @@ export class LowesScraper extends BaseScraper {
     // Attempt 2: through FlareSolverr / Chromium (worked for Target's API)
     const body = await fetchRenderedHtml(apiUrl);
     if (body) {
-      const start = body.indexOf('{');
-      const end = body.lastIndexOf('}');
-      if (start >= 0 && end > start) {
-        try {
-          const data = JSON.parse(
-            body.slice(start, end + 1).replace(/&quot;/g, '"').replace(/&amp;/g, '&')
-          );
-          logger.info(`[Lowes ${productId}] browser-based wpd fetch SUCCEEDED`);
-          const result = this.mapWpd(productId, data, productUrl);
-          if (result) return result;
-        } catch (err: any) {
-          logger.warn(`[Lowes ${productId}] browser-based wpd JSON parse failed: ${err.message}`);
-        }
+      const data = extractJsonFromRendered(body);
+      if (data) {
+        logger.info(`[Lowes ${productId}] browser-based wpd fetch SUCCEEDED`);
+        const result = this.mapWpd(productId, data, productUrl);
+        if (result) return result;
       } else {
-        logger.warn(`[Lowes ${productId}] browser-based wpd response had no JSON (${body.length} bytes)`);
+        logger.warn(`[Lowes ${productId}] browser-based wpd response had no parseable JSON (${body.length} bytes)`);
       }
     }
 

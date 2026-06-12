@@ -77,8 +77,47 @@ for (const store of allStores) {
   }
 }
 
-export function getScraperForStore(storeSlug: string): BaseScraper {
-  return scraperRegistry.get(storeSlug) || new GenericScraper(storeSlug);
+// Domain → dedicated scraper routing. Protects against store records whose
+// slug doesn't exactly match the registry name (a mismatched slug silently
+// routed Lowe's to the generic scraper).
+const domainMap: Record<string, string> = {
+  'amazon.com': 'amazon',
+  'apple.com': 'apple',
+  'bestbuy.com': 'bestbuy',
+  'ebay.com': 'ebay',
+  'gamestop.com': 'gamestop',
+  'hasbropulse.com': 'hasbropulse',
+  'homedepot.com': 'homedepot',
+  'lowes.com': 'lowes',
+  'newegg.com': 'newegg',
+  'target.com': 'target',
+  'walmart.com': 'walmart',
+};
+
+export function getScraperForStore(storeSlug: string, productUrl?: string): BaseScraper {
+  // 1. Exact slug
+  const direct = scraperRegistry.get(storeSlug);
+  if (direct) return direct;
+
+  // 2. Normalized slug ("Lowes.com" / "lowes-com" / "LOWES" → "lowes")
+  const normalized = storeSlug.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/com$/, '');
+  const byNormalized = scraperRegistry.get(normalized);
+  if (byNormalized) return byNormalized;
+
+  // 3. URL domain
+  if (productUrl) {
+    try {
+      const host = new URL(productUrl).hostname.replace(/^www\./, '');
+      for (const [domain, slug] of Object.entries(domainMap)) {
+        if (host === domain || host.endsWith(`.${domain}`)) {
+          const byDomain = scraperRegistry.get(slug);
+          if (byDomain) return byDomain;
+        }
+      }
+    } catch {}
+  }
+
+  return new GenericScraper(storeSlug);
 }
 
 export { scraperRegistry };

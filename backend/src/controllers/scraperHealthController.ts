@@ -53,7 +53,7 @@ async function runTestForStore(storeSlug: string): Promise<ScraperTestResult> {
   }
 
   try {
-    const scraper = getScraperForStore(storeSlug);
+    const scraper = getScraperForStore(storeSlug, listing.url);
 
     const result = await Promise.race([
       scraper.checkStock(listing.url, listing.id),

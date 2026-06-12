@@ -70,7 +70,7 @@ stockCheckerQueue.process(
     const results = await Promise.allSettled(
       product.storeListings.map(async (listing) => {
         const storeSlug = listing.store.slug;
-        const scraper = getScraperForStore(storeSlug);
+        const scraper = getScraperForStore(storeSlug, listing.url);
         const startTime = Date.now();
         let logStatus = 'success';
         let logMessage: string | undefined;

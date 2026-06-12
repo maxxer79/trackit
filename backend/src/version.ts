@@ -1,2 +1,1 @@
-// Bumped with every release alongside frontend/src/version.ts
-export const BACKEND_VERSION = '1.4.42';
+// Bumped with every release alongside frontend/src/version.ts\nexport const BACKEND_VERSION = '1.4.43';\n

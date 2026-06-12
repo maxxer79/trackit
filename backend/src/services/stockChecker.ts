@@ -711,7 +711,7 @@ export const checkStockForProduct = async (storeProductId: string): Promise<void
 
     const wasInStock = sp.inStock;
     // Use scraper index so all stores get the latest scraper logic (same path as Bull worker)
-    const scraper = getScraperForStore(sp.store.slug);
+    const scraper = getScraperForStore(sp.store.slug, sp.url);
     const scraperResult = await scraper.checkStock(sp.url, sp.id);
     const status = scraperResult.status;
 

@@ -71,6 +71,49 @@ export interface RenderOptions {
 }
 
 /**
+ * Extract JSON from a browser-rendered API response. Chrome wraps JSON in
+ * its viewer markup (<pre> plus large viewer DOM via FlareSolverr) — naive
+ * first-{-to-last-} slicing grabs viewer markup instead of the payload.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function extractJsonFromRendered(body: string): any | null {
+  const decode = (s: string) =>
+    s.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'");
+
+  // 1. Chrome JSON viewer: payload lives inside a <pre> element
+  const preMatches = body.match(/<pre[^>]*>([\s\S]*?)<\/pre>/gi) ?? [];
+  for (const pre of preMatches) {
+    const inner = decode(pre.replace(/^<pre[^>]*>/i, '').replace(/<\/pre>$/i, '').trim());
+    const s = inner.indexOf('{');
+    const e = inner.lastIndexOf('}');
+    if (s >= 0 && e > s) {
+      try {
+        return JSON.parse(inner.slice(s, e + 1));
+      } catch {}
+    }
+  }
+
+  // 2. Raw JSON body (no HTML wrapper)
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {}
+  }
+
+  // 3. Last resort: brace slice over the decoded body
+  const decoded = decode(body);
+  const s = decoded.indexOf('{');
+  const e = decoded.lastIndexOf('}');
+  if (s >= 0 && e > s) {
+    try {
+      return JSON.parse(decoded.slice(s, e + 1));
+    } catch {}
+  }
+  return null;
+}
+
+/**
  * Strip ad-tracking params (utm_*, gclid, …) before fetching. Long
  * Google-Ads URLs are a bot-detection red flag (GameStop's Cloudflare
  * started hard-blocking them) and bust per-URL caches.

@@ -11,7 +11,7 @@
  */
 import axios from 'axios';
 import { BaseScraper, StockResult } from './base';
-import { fetchRenderedHtml } from './browserFetch';
+import { fetchRenderedHtml, extractJsonFromRendered } from './browserFetch';
 import logger from '../utils/logger';
 
 export class AppleScraper extends BaseScraper {
@@ -53,16 +53,10 @@ export class AppleScraper extends BaseScraper {
     // Attempt 2: API through FlareSolverr / Chromium
     const body = await fetchRenderedHtml(apiUrl);
     if (body) {
-      const start = body.indexOf('{');
-      const end = body.lastIndexOf('}');
-      if (start >= 0 && end > start) {
-        try {
-          const data = JSON.parse(
-            body.slice(start, end + 1).replace(/&quot;/g, '"').replace(/&amp;/g, '&')
-          );
-          const result = this.mapFulfillment(part, data, productUrl);
-          if (result) return result;
-        } catch {}
+      const data = extractJsonFromRendered(body);
+      if (data) {
+        const result = this.mapFulfillment(part, data, productUrl);
+        if (result) return result;
       }
       // Raw regex backstop
       if (/"isBuyable"\s*:\s*true/i.test(body)) {
