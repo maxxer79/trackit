@@ -99,7 +99,8 @@ export class HomeDepotScraper extends BaseScraper {
 
       const product = data?.data?.product;
       if (!product) {
-        logger.warn(`[HomeDepot ${itemId}] GraphQL returned no product node`);
+        const sample = JSON.stringify(data ?? null).slice(0, 300);
+        logger.warn(`[HomeDepot ${itemId}] GraphQL returned no product node; response sample=${sample}`);
         return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'No product in GraphQL response' };
       }
 
