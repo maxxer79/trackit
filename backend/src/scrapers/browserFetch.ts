@@ -173,14 +173,10 @@ export function fetchRawJson(rawUrl: string, timeoutMs = 40000): Promise<any | n
 
       // The FIRST navigation response is often Akamai's challenge (403/410).
       // Give the challenge JS a few seconds to solve and set cookies.
-      if (navStatus !== 200) {
-        await new Promise<void>((r) => setTimeout(r, 6000));
-      } else {
-        await new Promise<void>((r) => setTimeout(r, 1000));
-      }
+      await new Promise<void>((r) => setTimeout(r, navStatus === 200 ? 1000 : 6000));
 
       // Re-fetch the URL IN-PAGE: rides the solved session cookies and
-      // returns the complete raw body — no JSON-viewer virtualization.
+      // returns the complete raw body - no JSON-viewer virtualization.
       let status = 0;
       let text = '';
       try {
@@ -194,7 +190,7 @@ export function fetchRawJson(rawUrl: string, timeoutMs = 40000): Promise<any | n
         status = result.status;
         text = result.text;
       } catch (e: any) {
-        logger.warn(`[BrowserFetch] In-page fetch threw (${e.message}) — using navigation body`);
+        logger.warn(`[BrowserFetch] In-page fetch threw (${e.message}) - using navigation body`);
       }
 
       // Fall back to the navigation response body if in-page fetch failed
@@ -217,7 +213,7 @@ export function fetchRawJson(rawUrl: string, timeoutMs = 40000): Promise<any | n
       if (text) {
         logger.warn(`[BrowserFetch] Raw body is not JSON; sample="${trimmed.slice(0, 200)}"`);
       }
-      // Sometimes the body is HTML-wrapped even here — reuse the extractor
+      // Sometimes the body is HTML-wrapped even here - reuse the extractor
       return extractJsonFromRendered(text);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -283,4 +279,30 @@ export function fetchRenderedHtml(rawUrl: string, timeoutMs = 40000, opts: Rende
       // Cloudflare-style interstitials ("Just a moment...", "Checking your
       // browser") usually auto-solve with stealth in a few seconds — poll
       // until the title changes or we give up.
-     
+      const isInterstitial = (t: string) =>
+        /just a moment|checking your browser|attention required|security check/i.test(t);
+      for (let i = 0; i < 6; i++) {
+        const title: string = await page.title().catch(() => '');
+        if (!isInterstitial(title)) break;
+        logger.info(`[BrowserFetch] Challenge interstitial detected ("${title}") — waiting (${i + 1}/6)`);
+        await new Promise<void>((r) => setTimeout(r, 3000));
+      }
+
+      const html: string = await page.content();
+      const finalTitle: string = await page.title().catch(() => '');
+      logger.info(`[BrowserFetch] Got ${html.length} bytes from ${url} (title: "${finalTitle}")`);
+      return html;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[BrowserFetch] Failed for ${url}: ${msg}`);
+      return null;
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+  };
+
+  // Serialize: each fetch waits for the previous one to finish
+  const result = queue.then(run, run);
+  queue = result.catch(() => {});
+  return result as Promise<string | null>;
+}
