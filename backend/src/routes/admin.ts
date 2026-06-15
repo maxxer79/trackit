@@ -37,10 +37,19 @@ router.post('/products/:id/scrape', scrapeProduct);
 router.patch('/store-products/:id/stock', async (req, res) => {
   try {
     const { prisma } = await import('../config/database');
-    const { inStock } = req.body;
+    const { inStock, stockStatus } = req.body;
+    const inStockBool = Boolean(inStock);
+    // A manual override must set BOTH inStock and stockStatus. The product
+    // detail API shows stockStatus in preference to inStock, so writing only
+    // inStock left the badge stale (stuck on UNKNOWN) and made the toggle
+    // one-way. Allow an explicit stockStatus, else derive it from inStock.
+    const status =
+      typeof stockStatus === 'string' && stockStatus
+        ? stockStatus
+        : inStockBool ? 'IN_STOCK' : 'OUT_OF_STOCK';
     const sp = await prisma.storeProduct.update({
       where: { id: req.params.id },
-      data: { inStock: Boolean(inStock), lastChecked: new Date() },
+      data: { inStock: inStockBool, stockStatus: status, lastChecked: new Date() },
     });
     res.json(sp);
   } catch (e) {
