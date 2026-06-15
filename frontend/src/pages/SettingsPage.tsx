@@ -29,7 +29,12 @@ function urlBase64ToUint8Array(base64String: string) {
 export default function SettingsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
   const { theme, setTheme } = useThemeStore();
+
+  // Refresh the cached user on load so admin-side changes (e.g. a new email)
+  // show here instead of the stale persisted value.
+  useEffect(() => { fetchMe(); }, [fetchMe]);
 
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
