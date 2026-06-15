@@ -66,7 +66,9 @@ export function useAddTracking() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ productId, watchStores }: { productId: string; watchStores?: string[] }) => {
-      const { data } = await api.post(`/tracking/${productId}`, { watchStores });
+      // Backend route is POST /api/tracking with productId in the body
+      // (not /tracking/:productId — that route doesn't exist and 404s).
+      const { data } = await api.post('/tracking', { productId, watchStores });
       return data;
     },
     onSuccess: () => {
