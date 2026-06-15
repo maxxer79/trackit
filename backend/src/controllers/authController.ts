@@ -98,10 +98,36 @@ export const getMe = async (req: Request & { user?: any }, res: Response): Promi
 
 export const updateProfile = async (req: Request & { user?: any }, res: Response): Promise<void> => {
   try {
-    const { name, emailAlerts, pushAlerts, browserAlerts } = req.body;
+    const { name, email, emailAlerts, pushAlerts, browserAlerts } = req.body;
+
+    // Only update fields that were actually provided (partial update).
+    const data: Record<string, unknown> = {};
+    if (name !== undefined) {
+      if (!String(name).trim()) { res.status(400).json({ error: 'Name cannot be empty' }); return; }
+      data.name = String(name).trim();
+    }
+    if (emailAlerts !== undefined) data.emailAlerts = emailAlerts;
+    if (pushAlerts !== undefined) data.pushAlerts = pushAlerts;
+    if (browserAlerts !== undefined) data.browserAlerts = browserAlerts;
+
+    if (email !== undefined) {
+      const normalized = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+        res.status(400).json({ error: 'Please enter a valid email address' });
+        return;
+      }
+      // Don't let two accounts share an email.
+      const existing = await prisma.user.findUnique({ where: { email: normalized } });
+      if (existing && existing.id !== req.user.id) {
+        res.status(409).json({ error: 'That email address is already in use' });
+        return;
+      }
+      data.email = normalized;
+    }
+
     const user = await prisma.user.update({
       where: { id: req.user.id },
-      data: { name, emailAlerts, pushAlerts, browserAlerts },
+      data,
       select: { id: true, email: true, name: true, role: true, trackingLimit: true, emailAlerts: true, pushAlerts: true, browserAlerts: true },
     });
     res.json(user);

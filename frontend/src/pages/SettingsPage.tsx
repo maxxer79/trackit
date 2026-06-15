@@ -29,7 +29,46 @@ function urlBase64ToUint8Array(base64String: string) {
 export default function SettingsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
   const { theme, setTheme } = useThemeStore();
+
+  // Account (name / email) editor
+  const [account, setAccount] = useState({ name: '', email: '' });
+  const accountDirty = !!user && (account.name !== (user.name ?? '') || account.email !== (user.email ?? ''));
+
+  // Password change
+  const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
+  const [showPwdForm, setShowPwdForm] = useState(false);
+
+  const saveAccount = useMutation({
+    mutationFn: async () => {
+      await api.put('/auth/profile', { name: account.name.trim(), email: account.email.trim() });
+    },
+    onSuccess: async () => {
+      await fetchMe();
+      toast.success('Account updated');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.error ?? 'Failed to update account'),
+  });
+
+  const changePassword = useMutation({
+    mutationFn: async () => {
+      await api.put('/auth/password', { currentPassword: pwd.current, newPassword: pwd.next });
+    },
+    onSuccess: () => {
+      setPwd({ current: '', next: '', confirm: '' });
+      setShowPwdForm(false);
+      toast.success('Password changed');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.error ?? 'Failed to change password'),
+  });
+
+  const submitPassword = () => {
+    if (!pwd.current) { toast.error('Enter your current password'); return; }
+    if (pwd.next.length < 8) { toast.error('New password must be at least 8 characters'); return; }
+    if (pwd.next !== pwd.confirm) { toast.error('New passwords do not match'); return; }
+    changePassword.mutate();
+  };
 
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
@@ -49,6 +88,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (prefs) setForm(prefs);
   }, [prefs]);
+
+  useEffect(() => {
+    if (user) setAccount({ name: user.name ?? '', email: user.email ?? '' });
+  }, [user]);
 
   // Check push subscription state
   useEffect(() => {
@@ -146,19 +189,114 @@ export default function SettingsPage() {
       <div className="space-y-4">
         {/* Account Info */}
         <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <h2 className="text-title2 font-bold text-dark-label1 mb-4">Account</h2>
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-apple-blue flex items-center justify-center text-xl font-bold text-white">
-              {user?.name?.[0]?.toUpperCase() ?? '?'}
+          <div className="flex items-center gap-4 mb-5">
+            <div className="w-14 h-14 rounded-full bg-apple-blue flex items-center justify-center text-xl font-bold text-white shrink-0">
+              {(account.name || user?.name)?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div>
-              <p className="text-subhead font-semibold text-dark-label1">{user?.name}</p>
-              <p className="text-footnote text-dark-label2">{user?.email}</p>
+              <h2 className="text-title2 font-bold text-dark-label1">Account</h2>
               <p className="text-caption2 text-dark-label3 mt-0.5">
                 {user?.role === 'ADMIN' ? '🛡 Admin' : '👤 User'} •{' '}
                 {user?.trackingLimit === -1 ? 'Unlimited tracking' : `${user?.trackingCount ?? 0}/${user?.trackingLimit ?? 1} items tracked`}
               </p>
             </div>
+          </div>
+
+          {/* Name + email */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-footnote font-semibold text-dark-label2 mb-1.5">Name</label>
+              <input
+                type="text"
+                value={account.name}
+                onChange={(e) => setAccount((a) => ({ ...a, name: e.target.value }))}
+                placeholder="Your name"
+                className="input text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-footnote font-semibold text-dark-label2 mb-1.5">Email</label>
+              <input
+                type="email"
+                value={account.email}
+                onChange={(e) => setAccount((a) => ({ ...a, email: e.target.value }))}
+                placeholder="you@example.com"
+                className="input text-sm"
+              />
+              <p className="text-caption2 text-dark-label3 mt-1">Used for sign-in and email alerts.</p>
+            </div>
+            {accountDirty && (
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => user && setAccount({ name: user.name ?? '', email: user.email ?? '' })}
+                  className="btn-ghost text-footnote"
+                >
+                  Reset
+                </button>
+                <button
+                  onClick={() => saveAccount.mutate()}
+                  disabled={saveAccount.isPending}
+                  className="btn-primary px-5 py-2 text-footnote"
+                >
+                  {saveAccount.isPending ? 'Saving…' : 'Save Account'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Change password */}
+          <div className="mt-5 pt-5 border-t border-dark-surface3">
+            {!showPwdForm ? (
+              <button
+                onClick={() => setShowPwdForm(true)}
+                className="text-footnote font-semibold text-apple-blue hover:underline"
+              >
+                Change password
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-subhead font-semibold text-dark-label1">Change password</p>
+                <input
+                  type="password"
+                  value={pwd.current}
+                  onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
+                  placeholder="Current password"
+                  autoComplete="current-password"
+                  className="input text-sm"
+                />
+                <input
+                  type="password"
+                  value={pwd.next}
+                  onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
+                  placeholder="New password (min 8 characters)"
+                  autoComplete="new-password"
+                  className="input text-sm"
+                />
+                <input
+                  type="password"
+                  value={pwd.confirm}
+                  onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  className="input text-sm"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowPwdForm(false); setPwd({ current: '', next: '', confirm: '' }); }}
+                    className="btn-ghost text-footnote"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={submitPassword}
+                    disabled={changePassword.isPending}
+                    className="btn-primary px-5 py-2 text-footnote"
+                  >
+                    {changePassword.isPending ? 'Updating…' : 'Update Password'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
 
