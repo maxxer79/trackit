@@ -41,7 +41,10 @@ jobs:
             ${{ env.BACKEND_IMAGE }}:latest
             ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # ignore-error: a flaky GitHub cache write ("error writing layer
+          # blob: not_found") must not fail the build after the image already
+          # pushed — that was aborting the job before the frontend built.
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # ─── Frontend ────────────────────────────────────────────────────────────
       - name: Build and push Frontend image
@@ -55,7 +58,7 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}:latest
             ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Summary
         run: |
