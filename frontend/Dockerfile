@@ -10,6 +10,11 @@ RUN npm install
 # Copy source
 COPY . .
 
+# Vite inlines VITE_* vars at build time, so the VAPID public key (needed for
+# browser push subscriptions) must be present here, not at container runtime.
+ARG VITE_VAPID_PUBLIC_KEY
+ENV VITE_VAPID_PUBLIC_KEY=$VITE_VAPID_PUBLIC_KEY
+
 # Build the Vite app
 RUN npm run build
 
