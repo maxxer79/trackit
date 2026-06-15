@@ -137,7 +137,11 @@ export default function AdminStores() {
     setTestResults({});
     let green = 0, red = 0, gray = 0;
 
-    // 3 at a time so the backend (and eBay's headless browser) isn't hammered
+    // Run strictly one-at-a-time. The backend serializes ALL browser /
+    // FlareSolverr fetches through a single global queue, so client-side
+    // concurrency buys no speed — it just stacks requests behind one another
+    // until the slow ones blow past nginx's proxy_read_timeout and come back
+    // as bogus 504s. Sequential = each request only waits for its own scrape.
     const queue = [...slugs];
     const worker = async () => {
       while (queue.length > 0) {
@@ -149,7 +153,7 @@ export default function AdminStores() {
         else red++;
       }
     };
-    await Promise.all(Array.from({ length: Math.min(3, slugs.length) }, worker));
+    await Promise.all(Array.from({ length: 1 }, worker));
 
     setTestingAll(false);
     toast[red === 0 ? 'success' : 'error'](

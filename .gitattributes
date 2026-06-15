@@ -1,0 +1,45 @@
+# Normalize line endings so the repo is consistent across Windows, Linux,
+# and the OneDrive-synced working copy. Without this, a Linux checkout sees
+# every CRLF file as "modified" and tooling reports the whole tree as dirty.
+
+# Default: treat as text, store as LF in the repo, check out native on disk.
+* text=auto eol=lf
+
+# Source / config — always LF
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+*.scss  text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.conf  text eol=lf
+*.sh    text eol=lf
+*.prisma text eol=lf
+*.env.example text eol=lf
+Dockerfile text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Windows-only scripts must stay CRLF
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Binaries — never touch
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.svg   text eol=lf
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.pdf   binary

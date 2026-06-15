@@ -117,9 +117,9 @@ async function ensureSchema(): Promise<void> {
   try {
     const { prisma } = await import('./config/database');
     await prisma.$executeRawUnsafe('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "modelNumber" TEXT');
-    console.log('Schema sync complete');
+    console.log('✅ Schema sync complete');
   } catch (err: any) {
-    console.error('Schema sync failed:', err.message);
+    console.error('⚠️ Schema sync failed:', err.message);
   }
 }
 

@@ -42,7 +42,7 @@ class WithGenericFallback extends BaseScraper {
 }
 
 // Register dedicated scrapers (all but eBay get the generic/browser fallback;
-// eBay has its own rendered fallback and its URLs are search pages, which
+// eBay has its own Puppeteer fallback and its URLs are search pages, which
 // the generic product-page detection doesn't understand)
 scraperRegistry.set('amazon', new WithGenericFallback('amazon', new AmazonScraper()));
 scraperRegistry.set('bestbuy', new WithGenericFallback('bestbuy', new BestBuyScraper()));
