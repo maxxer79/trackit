@@ -97,11 +97,44 @@ export const createAdminUser = async (req: Request, res: Response): Promise<void
 export const updateUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { trackingLimit, role, isActive, name } = req.body;
+    const { trackingLimit, role, isActive, name, email, password } = req.body;
+
+    // Build a partial update so we only touch fields that were sent.
+    const data: Record<string, unknown> = {};
+    if (trackingLimit !== undefined) data.trackingLimit = trackingLimit;
+    if (role !== undefined) data.role = role;
+    if (isActive !== undefined) data.isActive = isActive;
+    if (name !== undefined) {
+      if (!String(name).trim()) { res.status(400).json({ error: 'Name cannot be empty' }); return; }
+      data.name = String(name).trim();
+    }
+
+    if (email !== undefined) {
+      const normalized = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+        res.status(400).json({ error: 'Please enter a valid email address' });
+        return;
+      }
+      const existing = await prisma.user.findUnique({ where: { email: normalized } });
+      if (existing && existing.id !== id) {
+        res.status(409).json({ error: 'That email address is already in use' });
+        return;
+      }
+      data.email = normalized;
+    }
+
+    // Password is optional — only reset it when a non-empty value is supplied.
+    if (password !== undefined && password !== '') {
+      if (String(password).length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters' });
+        return;
+      }
+      data.password = await bcrypt.hash(String(password), 12);
+    }
 
     const user = await prisma.user.update({
       where: { id },
-      data: { trackingLimit, role, isActive, name },
+      data,
       select: { id: true, email: true, name: true, role: true, trackingLimit: true, isActive: true },
     });
 

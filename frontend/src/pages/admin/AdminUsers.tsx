@@ -13,7 +13,7 @@ export default function AdminUsers() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState({ role: '', trackingLimit: '', isActive: true });
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: '', trackingLimit: '', isActive: true });
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_CREATE);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export default function AdminUsers() {
   });
 
   const updateUser = useMutation({
-    mutationFn: async ({ id, ...body }: { id: string; role?: string; trackingLimit?: number; isActive?: boolean }) => {
+    mutationFn: async ({ id, ...body }: { id: string; name?: string; email?: string; password?: string; role?: string; trackingLimit?: number; isActive?: boolean }) => {
       await api.patch(`/admin/users/${id}`, body);
     },
     onSuccess: () => {
@@ -48,7 +48,7 @@ export default function AdminUsers() {
       toast.success('User updated');
       setEditUser(null);
     },
-    onError: () => toast.error('Failed to update user'),
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to update user'),
   });
 
   const deleteUser = useMutation({
@@ -65,6 +65,9 @@ export default function AdminUsers() {
   const openEdit = (user: AdminUser) => {
     setEditUser(user);
     setEditForm({
+      name: user.name ?? '',
+      email: user.email ?? '',
+      password: '',
       role: user.role,
       trackingLimit: user.trackingLimit === -1 ? '-1' : String(user.trackingLimit),
       isActive: user.isActive,
@@ -73,8 +76,18 @@ export default function AdminUsers() {
 
   const handleSave = () => {
     if (!editUser) return;
+    if (!editForm.name.trim()) { toast.error('Name cannot be empty'); return; }
+    if (!editForm.email.trim()) { toast.error('Email cannot be empty'); return; }
+    if (editForm.password && editForm.password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
     updateUser.mutate({
       id: editUser.id,
+      name: editForm.name.trim(),
+      email: editForm.email.trim(),
+      // Only send password when the admin actually typed a new one.
+      ...(editForm.password ? { password: editForm.password } : {}),
       role: editForm.role as 'USER' | 'ADMIN',
       trackingLimit: parseInt(editForm.trackingLimit, 10),
       isActive: editForm.isActive,
@@ -247,6 +260,20 @@ export default function AdminUsers() {
       {/* Edit Modal */}
       <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title={`Edit: ${editUser?.name}`}>
         <div className="space-y-5">
+          <div>
+            <label className="block text-footnote font-semibold text-dark-label2 mb-2">Name</label>
+            <input type="text" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} className="input" placeholder="Full name" />
+          </div>
+          <div>
+            <label className="block text-footnote font-semibold text-dark-label2 mb-2">Email</label>
+            <input type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className="input" placeholder="user@example.com" />
+          </div>
+          <div>
+            <label className="block text-footnote font-semibold text-dark-label2 mb-2">
+              New Password <span className="text-dark-label3 font-normal">(leave blank to keep current)</span>
+            </label>
+            <input type="password" value={editForm.password} onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} className="input" placeholder="Min 8 characters" autoComplete="new-password" />
+          </div>
           <div>
             <label className="block text-footnote font-semibold text-dark-label2 mb-2">Role</label>
             <div className="flex gap-2">
