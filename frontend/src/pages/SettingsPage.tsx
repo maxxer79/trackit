@@ -17,7 +17,13 @@ interface NotifPrefs {
   autoBuyMaxPrice: number | null;
 }
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY ?? '';
+// The VAPID PUBLIC key is safe to ship in client code (browsers receive it
+// anyway). Hardcoded as a fallback so push works regardless of build-arg /
+// GitHub-variable plumbing; a VITE_VAPID_PUBLIC_KEY env value still overrides
+// it (e.g. for key rotation). Must match the backend's VAPID_PUBLIC_KEY.
+const VAPID_PUBLIC_KEY =
+  import.meta.env.VITE_VAPID_PUBLIC_KEY ||
+  'BDcSMPCqyzWtuL__6mEqEZDj3kMktKkqtZDCqCvXPo6Vx38xqzPgXypR4qk1spu0d067c-hTuFh4FcdkSf0EOOM';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);

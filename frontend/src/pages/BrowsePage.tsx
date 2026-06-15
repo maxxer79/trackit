@@ -147,45 +147,53 @@ export default function BrowsePage() {
       )}
 
       {/* Pagination */}
-      {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-10">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="btn-secondary px-4 py-2 disabled:opacity-30"
-          >
-            ← Prev
-          </button>
+      {data && data.totalPages > 1 && (() => {
+        const total = data.totalPages;
+        // Build a windowed page list that always includes page 1 and the last
+        // page, with the current page ±1, and "…" gaps between.
+        const items: (number | '…')[] = [];
+        for (let p = 1; p <= total; p++) {
+          if (p === 1 || p === total || (p >= page - 1 && p <= page + 1)) {
+            items.push(p);
+          } else if (items[items.length - 1] !== '…') {
+            items.push('…');
+          }
+        }
+        return (
+          <div className="flex items-center justify-center gap-1.5 mt-10 flex-wrap">
+            <button onClick={() => setPage(1)} disabled={page === 1}
+              title="First page" className="btn-secondary px-3 py-2 disabled:opacity-30">«</button>
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+              className="btn-secondary px-3 py-2 disabled:opacity-30">← Prev</button>
 
-          <div className="flex gap-1">
-            {Array.from({ length: Math.min(7, data.totalPages) }).map((_, i) => {
-              const p = i + 1;
-              return (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className={clsx(
-                    'w-9 h-9 rounded-apple text-footnote font-semibold transition-all',
-                    p === page
-                      ? 'bg-apple-blue text-white'
-                      : 'bg-dark-surface2 text-dark-label2 hover:bg-dark-surface3 hover:text-dark-label1'
-                  )}
-                >
-                  {p}
-                </button>
-              );
-            })}
+            <div className="flex gap-1">
+              {items.map((p, i) =>
+                p === '…' ? (
+                  <span key={`gap-${i}`} className="w-9 h-9 flex items-center justify-center text-dark-label3 select-none">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={clsx(
+                      'w-9 h-9 rounded-apple text-footnote font-semibold transition-all',
+                      p === page
+                        ? 'bg-apple-blue text-white'
+                        : 'bg-dark-surface2 text-dark-label2 hover:bg-dark-surface3 hover:text-dark-label1'
+                    )}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            </div>
+
+            <button onClick={() => setPage((p) => Math.min(total, p + 1))} disabled={page === total}
+              className="btn-secondary px-3 py-2 disabled:opacity-30">Next →</button>
+            <button onClick={() => setPage(total)} disabled={page === total}
+              title="Last page" className="btn-secondary px-3 py-2 disabled:opacity-30">»</button>
           </div>
-
-          <button
-            onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-            disabled={page === data.totalPages}
-            className="btn-secondary px-4 py-2 disabled:opacity-30"
-          >
-            Next →
-          </button>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
