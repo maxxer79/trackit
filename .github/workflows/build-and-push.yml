@@ -1,7 +1,9 @@
-name: Build & Push Docker Images
+name: CI — Test, Build & Push
 
 on:
   push:
+    branches: [ main ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:   # allows manual trigger from GitHub UI
 
@@ -11,7 +13,53 @@ env:
   FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/trackit-frontend
 
 jobs:
+  # ─── Lint / typecheck / tests ──────────────────────────────────────────────
+  # Fast feedback on PRs (and before any image is built on main). Uses
+  # `npm install` because no lockfile is committed yet (Dockerfiles do the same).
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'   # matches the node:20-alpine runtime
+
+      # ── Backend: tests + typecheck ──
+      - name: Backend — install
+        working-directory: backend
+        run: npm install
+      - name: Backend — generate Prisma client (needed for typecheck)
+        working-directory: backend
+        run: npx prisma generate
+      - name: Backend — tests
+        working-directory: backend
+        run: npm test
+      - name: Backend — typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      # ── Frontend: lint + typecheck ──
+      - name: Frontend — install
+        working-directory: frontend
+        run: npm install
+      # Advisory for now: lint uses --max-warnings 0, so pre-existing warnings
+      # would otherwise block the gated build. Flip to blocking (remove
+      # continue-on-error) once the existing warnings are cleaned up.
+      - name: Frontend — lint (advisory)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint
+      - name: Frontend — typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+  # ─── Build & push images (only after tests pass; never on PRs) ──────────────
   build-and-push:
+    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
