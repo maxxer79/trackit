@@ -1,6 +1,7 @@
 import Bull from 'bull';
 import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
+import { isInStock } from '../scrapers/stockState';
 import { sendNotifications } from '../services/notifications';
 import logger from '../utils/logger';
 
@@ -124,9 +125,9 @@ stockCheckerQueue.process(
           }
 
           const wasInStock = listing.inStock;
-          // PREORDER counts as in stock — a sellable preorder is buyable
-          const isNowInStock =
-            result.status === 'IN_STOCK' || result.status === 'LIMITED' || result.status === 'PREORDER';
+          // PREORDER counts as in stock — a sellable preorder is buyable.
+          // (predicate extracted to scrapers/stockState.ts and unit-tested)
+          const isNowInStock = isInStock(result.status);
 
           // Update store listing with latest stock info
           await prisma.storeProduct.update({

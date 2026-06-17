@@ -118,7 +118,7 @@ export const createAdminUserSchema = z.object({
   email: emailField,
   password: newPasswordField,
   role: z.enum(['USER', 'ADMIN']).optional(),
-  trackingLimit: z.number().int().optional(),
+  trackingLimit: z.coerce.number().int().optional(), // createForm sends '10' as a string
 });
 
 export const updateUserSchema = z
