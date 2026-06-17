@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
 import { isInStock } from '../scrapers/stockState';
 import { sendNotifications } from '../services/notifications';
+import { ScraperError } from '../errors';
 import logger from '../utils/logger';
 
 /**
@@ -231,11 +232,16 @@ stockCheckerQueue.process(
 
           return { listingId: listing.id, inStock: isNowInStock };
         } catch (error: any) {
+          // Classify from the ORIGINAL error first so HTTP 429 → 'blocked' is
+          // preserved, then wrap as a typed ScraperError for a stable log code.
           logStatus = error.response?.status === 429 ? 'blocked' : 'error';
           logMessage = error.message;
+          const scraperError =
+            error instanceof ScraperError ? error : new ScraperError(error.message, { storeSlug, cause: error });
 
           logger.warn('listing check failed', {
             ...ctx,
+            code: scraperError.code,
             logStatus,
             durationMs: Date.now() - startTime,
             error: logMessage,

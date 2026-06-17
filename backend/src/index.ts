@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { initSocket } from './socket/index';
 import { scheduleAllProducts } from './workers/stockChecker';
+import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
 
 // Routes
@@ -93,13 +94,10 @@ app.use((_req, res) => {
 });
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
+// Central handler: maps AppError subclasses to their statusCode/code and logs
+// via winston (see middleware/errorHandler.ts and errors/).
 
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-  });
-});
+app.use(errorHandler);
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 

@@ -3,6 +3,22 @@ import { sendEmailAlert } from './email';
 import { sendSmsAlert } from './sms';
 import { sendPushAlert } from './push';
 import { sendDiscordAlert } from './discord';
+import logger from '../utils/logger';
+import { NotificationError } from '../errors';
+
+/**
+ * A single notification channel failing must not block the others, so per-channel
+ * errors are logged (as a typed NotificationError) rather than thrown.
+ */
+function logChannelFailure(
+  channel: string,
+  userId: string,
+  productSlug: string,
+  err: { message?: string }
+): void {
+  const e = new NotificationError(`${channel} alert failed`, { channel, cause: err?.message });
+  logger.warn(e.message, { code: e.code, channel, userId, productSlug, error: err?.message });
+}
 
 interface NotificationPayload {
   user: {
@@ -57,7 +73,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productUrl,
         price,
         status,
-      }).catch((err) => console.error('Email alert failed:', err.message))
+      }).catch((err) => logChannelFailure('email', user.id, product.slug, err))
     );
   }
 
@@ -71,7 +87,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productUrl,
         price,
         status,
-      }).catch((err) => console.error('SMS alert failed:', err.message))
+      }).catch((err) => logChannelFailure('sms', user.id, product.slug, err))
     );
   }
 
@@ -86,7 +102,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         price,
         status,
         productSlug: product.slug,
-      }).catch((err) => console.error('Push alert failed:', err.message))
+      }).catch((err) => logChannelFailure('push', user.id, product.slug, err))
     );
   }
 
@@ -100,7 +116,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productUrl,
         price,
         status,
-      }).catch((err) => console.error('Discord alert failed:', err.message))
+      }).catch((err) => logChannelFailure('discord', user.id, product.slug, err))
     );
   }
 
@@ -125,14 +141,23 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
       },
     });
   } catch (err: any) {
-    console.error('Failed to log alert:', err.message);
+    logger.error('failed to log alert', {
+      userId: user.id,
+      productSlug: product.slug,
+      error: err.message,
+    });
   }
 
   // AutoBuy logic — log attempt if enabled and within price limit
   if (autoBuyEnabled && user.autoBuyEnabled) {
     const priceOk = !autoBuyMaxPrice || !price || price <= autoBuyMaxPrice;
     if (priceOk) {
-      console.log(`🛒 AutoBuy triggered for ${user.email} — ${product.name} at ${storeName} ($${price ?? 'N/A'})`);
+      logger.info('autobuy triggered', {
+        userId: user.id,
+        productName: product.name,
+        storeName,
+        price: price ?? null,
+      });
       // TODO: Integrate with store-specific add-to-cart automation
       // This is intentionally left as a stub — full browser automation
       // (Puppeteer/Playwright) would be wired here per store
