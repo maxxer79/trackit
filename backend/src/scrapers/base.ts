@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
 import type { StockResult, StockStatus } from '@shared';
 import { withRetry } from './retry';
+import { scraperRateLimiter } from './rateLimiter';
 import logger from '../utils/logger';
 
 // Re-export the shared scraper contract so existing `import { StockResult }
@@ -39,6 +40,14 @@ export abstract class BaseScraper {
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1',
       },
+    });
+
+    // Per-retailer pacing: every request through this client waits for its
+    // store's rate-limit slot, so concurrent worker jobs hitting the same
+    // retailer are spaced out (shared singleton keyed by storeSlug).
+    this.client.interceptors.request.use(async (config) => {
+      await scraperRateLimiter.acquire(this.storeSlug);
+      return config;
     });
   }
 
