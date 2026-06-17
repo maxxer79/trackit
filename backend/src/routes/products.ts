@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { getProducts, getProductBySlug, getCategories, getFeaturedProducts, getNewProducts, getStores, liveCheckProduct } from '../controllers/productController';
 import { getComments, createComment, deleteComment, getStockHistory } from '../controllers/commentController';
 import { authenticate, requireAdmin } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { createCommentSchema } from '../schemas';
 
 const router = Router();
 
@@ -12,7 +14,7 @@ router.get('/categories', getCategories);
 router.get('/stores', getStores);
 router.get('/:slug', getProductBySlug);
 router.get('/:slug/comments', getComments);
-router.post('/:slug/comments', authenticate, createComment);
+router.post('/:slug/comments', authenticate, validate(createCommentSchema), createComment);
 router.delete('/comments/:id', authenticate, requireAdmin, deleteComment);
 router.get('/:slug/stock-history', getStockHistory);
 router.get('/:slug/live-check', liveCheckProduct);

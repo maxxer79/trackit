@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { getDashboardStats, getUsers, createAdminUser, updateUser, deleteUser, getAdminProducts, createProduct, updateProduct, deleteProduct, scrapeProduct, scrapeAll, fetchImage, addStoreProduct, getAdminStores, createAdminStore, updateAdminStore, deleteAdminStore } from '../controllers/adminController';
 import { testScraper, testAllScrapers } from '../controllers/scraperHealthController';
+import { validate } from '../middleware/validate';
+import { createProductSchema, addStoreProductSchema, updateStockSchema, createAdminUserSchema, updateUserSchema } from '../schemas';
 
 const router = Router();
 router.use(authenticate, requireAdmin);
@@ -26,15 +28,15 @@ router.get('/logs', async (req, res) => {
   }
 });
 router.get('/users', getUsers);
-router.post('/users', createAdminUser);
-router.patch('/users/:id', updateUser);
+router.post('/users', validate(createAdminUserSchema), createAdminUser);
+router.patch('/users/:id', validate(updateUserSchema), updateUser);
 router.delete('/users/:id', deleteUser);
 router.get('/products', getAdminProducts);
-router.post('/products', createProduct);
+router.post('/products', validate(createProductSchema), createProduct);
 router.patch('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 router.post('/products/:id/scrape', scrapeProduct);
-router.patch('/store-products/:id/stock', async (req, res) => {
+router.patch('/store-products/:id/stock', validate(updateStockSchema), async (req, res) => {
   try {
     const { prisma } = await import('../config/database');
     const { inStock, stockStatus } = req.body;
@@ -58,7 +60,7 @@ router.patch('/store-products/:id/stock', async (req, res) => {
 });
 router.post('/scrape-all', scrapeAll);
 router.get('/fetch-image', fetchImage);
-router.post('/store-products', addStoreProduct);
+router.post('/store-products', validate(addStoreProductSchema), addStoreProduct);
 router.get('/stores', getAdminStores);
 router.post('/scrapers/test-all', testAllScrapers);
 router.post('/scrapers/:slug/test', testScraper);

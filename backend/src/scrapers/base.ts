@@ -1,14 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import type { StockResult, StockStatus } from '@shared';
 
-export interface StockResult {
-  storeSlug: string;
-  status: 'IN_STOCK' | 'OUT_OF_STOCK' | 'LIMITED' | 'PREORDER' | 'UNKNOWN';
-  price?: number;
-  originalPrice?: number;
-  productUrl: string;
-  message?: string;
-}
+// Re-export the shared scraper contract so existing `import { StockResult }
+// from './base'` sites across the scrapers keep working unchanged.
+export type { StockResult, StockStatus };
 
 export abstract class BaseScraper {
   protected storeSlug: string;

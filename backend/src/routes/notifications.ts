@@ -4,13 +4,15 @@ import {
   getPreferences, updatePreferences, subscribePush, unsubscribePush,
 } from '../controllers/notificationController';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { updatePreferencesSchema } from '../schemas';
 
 const router = Router();
 router.use(authenticate);
 
 // Notification preferences (Settings page → Notification Channels)
 router.get('/preferences', getPreferences);
-router.put('/preferences', updatePreferences);
+router.put('/preferences', validate(updatePreferencesSchema), updatePreferences);
 
 // Web push subscription lifecycle (browser PushSubscription.toJSON())
 router.post('/push/subscribe', subscribePush);

@@ -1,0 +1,10 @@
+# Build context is now the repo root (so ./shared is visible to both images).
+# Keep the context small and avoid leaking local artifacts into the build.
+**/node_modules
+**/dist
+**/.git
+.git
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example

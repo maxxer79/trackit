@@ -39,7 +39,11 @@ export interface Store {
 
 // ─── Stock ─────────────────────────────────────────────────────────────────
 
-export type StockStatus = 'IN_STOCK' | 'OUT_OF_STOCK' | 'LIMITED' | 'PREORDER' | 'UNKNOWN';
+// Canonical definition now lives in the repo-root shared package. Import it so
+// the types below (StockStatusEntry, etc.) can use it, and re-export so existing
+// `import { StockStatus } from '@/types'` sites elsewhere are unchanged.
+import type { StockStatus, StockResult } from '@shared';
+export type { StockStatus, StockResult };
 
 export interface StockStatusEntry {
   storeSlug: string;
