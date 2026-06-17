@@ -313,7 +313,8 @@ export async function getWorkerHealth() {
   const intervalMinutes = parseInt(process.env.SCRAPER_INTERVAL_MINUTES || '5', 10);
 
   let redisOk = true;
-  let counts: Record<string, number> | null = null;
+  // Derive the type straight from the method so it can't drift from Bull's API.
+  let counts: Awaited<ReturnType<typeof stockCheckerQueue.getJobCounts>> | null = null;
   try {
     counts = await stockCheckerQueue.getJobCounts();
   } catch {
