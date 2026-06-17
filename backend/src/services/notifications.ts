@@ -5,6 +5,7 @@ import { sendPushAlert } from './push';
 import { sendDiscordAlert } from './discord';
 import logger from '../utils/logger';
 import { NotificationError } from '../errors';
+import { autoBuyOutcome } from './autoBuy';
 
 /**
  * A single notification channel failing must not block the others, so per-channel
@@ -148,15 +149,44 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
     });
   }
 
-  // AutoBuy logic — log attempt if enabled and within price limit
+  // AutoBuy — execution is still a stub, but EVERY evaluation for an enabled
+  // user is written to the AutoBuyAttempt audit trail (money-adjacent, so we
+  // want the paper trail in place before AutoBuy ever moves money).
   if (autoBuyEnabled && user.autoBuyEnabled) {
-    const priceOk = !autoBuyMaxPrice || !price || price <= autoBuyMaxPrice;
-    if (priceOk) {
+    const outcome = autoBuyOutcome(price, autoBuyMaxPrice);
+
+    try {
+      await prisma.autoBuyAttempt.create({
+        data: {
+          userId: user.id,
+          productId: product.id,
+          storeSlug: payload.storeSlug,
+          storeName,
+          productUrl,
+          price: price ?? null,
+          maxPrice: autoBuyMaxPrice ?? null,
+          outcome,
+          message:
+            outcome === 'SKIPPED_OVER_MAX'
+              ? `price ${price} exceeded max ${autoBuyMaxPrice}`
+              : 'auto-buy conditions met (execution not yet implemented)',
+        },
+      });
+    } catch (err: any) {
+      logger.error('failed to record autobuy attempt', {
+        userId: user.id,
+        productSlug: product.slug,
+        error: err.message,
+      });
+    }
+
+    if (outcome === 'TRIGGERED') {
       logger.info('autobuy triggered', {
         userId: user.id,
         productName: product.name,
         storeName,
         price: price ?? null,
+        maxPrice: autoBuyMaxPrice ?? null,
       });
       // TODO: Integrate with store-specific add-to-cart automation
       // This is intentionally left as a stub — full browser automation

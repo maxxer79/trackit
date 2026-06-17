@@ -137,6 +137,26 @@ async function ensureSchema(): Promise<void> {
     // `prisma migrate` stays idempotent. Supersedes the earlier
     // idx_scraper_logs_created_at index (renamed to the Prisma convention).
     await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "idx_scraper_logs_created_at"');
+
+    // AutoBuy audit table (no prisma migrate on boot — create it here to match
+    // the AutoBuyAttempt model in schema.prisma). Column types/names mirror what
+    // Prisma generates so the client and the physical table agree.
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "autobuy_attempts" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "productId" TEXT NOT NULL,
+        "storeSlug" TEXT NOT NULL,
+        "storeName" TEXT,
+        "productUrl" TEXT,
+        "price" DOUBLE PRECISION,
+        "maxPrice" DOUBLE PRECISION,
+        "outcome" TEXT NOT NULL,
+        "message" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     const indexes = [
       'CREATE INDEX IF NOT EXISTS "trackings_productId_idx" ON "trackings" ("productId")',
       'CREATE INDEX IF NOT EXISTS "store_products_storeId_idx" ON "store_products" ("storeId")',
@@ -145,6 +165,8 @@ async function ensureSchema(): Promise<void> {
       'CREATE INDEX IF NOT EXISTS "comments_productId_idx" ON "comments" ("productId")',
       'CREATE INDEX IF NOT EXISTS "push_tokens_userId_idx" ON "push_tokens" ("userId")',
       'CREATE INDEX IF NOT EXISTS "scraper_logs_createdAt_idx" ON "scraper_logs" ("createdAt")',
+      'CREATE INDEX IF NOT EXISTS "autobuy_attempts_userId_createdAt_idx" ON "autobuy_attempts" ("userId", "createdAt")',
+      'CREATE INDEX IF NOT EXISTS "autobuy_attempts_createdAt_idx" ON "autobuy_attempts" ("createdAt")',
     ];
     for (const sql of indexes) {
       await prisma.$executeRawUnsafe(sql);

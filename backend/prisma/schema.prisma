@@ -226,6 +226,27 @@ model StockEvent {
   @@map("stock_events")
 }
 
+// Audit trail for AutoBuy. AutoBuy execution is still a stub, but every time the
+// conditions are evaluated for an enabled user we record it here — so the moment
+// AutoBuy ever moves money, there's already a money-adjacent paper trail.
+model AutoBuyAttempt {
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  storeSlug  String
+  storeName  String?
+  productUrl String?
+  price      Float?
+  maxPrice   Float?
+  outcome    String   // TRIGGERED | SKIPPED_OVER_MAX
+  message    String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("autobuy_attempts")
+}
+
 enum Role {
   USER
   ADMIN
