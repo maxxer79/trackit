@@ -1,6 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
 import type { StockResult, StockStatus } from '@shared';
+import { withRetry } from './retry';
+import logger from '../utils/logger';
 
 // Re-export the shared scraper contract so existing `import { StockResult }
 // from './base'` sites across the scrapers keep working unchanged.
@@ -43,7 +45,19 @@ export abstract class BaseScraper {
   abstract checkStock(productUrl: string, storeProductId?: string): Promise<StockResult>;
 
   protected async fetchPage(url: string): Promise<string> {
-    const response = await this.client.get(url);
+    // Retry transient failures (network resets, timeouts, 5xx) with jittered
+    // backoff before letting the scraper fall through to its browser fallback.
+    // Bot-blocks (403) and 429 are NOT retried — see retry.ts.
+    const response = await withRetry(() => this.client.get(url), {
+      onRetry: ({ attempt, delayMs, error }) =>
+        logger.debug('scraper fetch retry', {
+          storeSlug: this.storeSlug,
+          url,
+          attempt,
+          delayMs,
+          error: (error as { message?: string })?.message,
+        }),
+    });
     return response.data;
   }
 
