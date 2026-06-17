@@ -91,6 +91,9 @@ services:
       SCRAPER_CONCURRENCY: ${SCRAPER_CONCURRENCY:-5}
       # Min ms between requests to the SAME retailer (per-store pacing); 0 disables.
       SCRAPER_MIN_INTERVAL_MS: ${SCRAPER_MIN_INTERVAL_MS:-1200}
+      # Retention windows (days) for housekeeping; 0 disables that table's pruning.
+      SCRAPER_LOG_RETENTION_DAYS: ${SCRAPER_LOG_RETENTION_DAYS:-30}
+      STOCK_EVENT_RETENTION_DAYS: ${STOCK_EVENT_RETENTION_DAYS:-365}
     depends_on:
       postgres:
         condition: service_healthy

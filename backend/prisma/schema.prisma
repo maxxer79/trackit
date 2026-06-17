@@ -95,7 +95,9 @@ model StoreProduct {
   updatedAt   DateTime  @updatedAt
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  store   Store   @relation(fields: [storeId], references: [id])
+  // Explicit Restrict (was Prisma's implicit default): a Store can't be deleted
+  // while it still has listings — you must remove/relink the listings first.
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Restrict)
   alerts  Alert[]
 
   @@unique([productId, storeId])

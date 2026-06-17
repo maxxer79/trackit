@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { initSocket } from './socket/index';
 import { scheduleAllProducts, getWorkerHealth } from './workers/stockChecker';
+import { pruneOldRecords } from './workers/prune';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
 
@@ -176,6 +177,12 @@ httpServer.listen(PORT, async () => {
     }
   };
   await trySchedule();
+
+  // Retention housekeeping: prune old ScraperLog / StockEvent rows once shortly
+  // after boot, then daily. deleteMany on an indexed createdAt is cheap; failures
+  // are swallowed inside pruneOldRecords so this never affects serving.
+  setTimeout(() => void pruneOldRecords(), 60_000);
+  setInterval(() => void pruneOldRecords(), 24 * 60 * 60 * 1000);
 });
 
 export default app;
