@@ -99,6 +99,7 @@ model StoreProduct {
   alerts  Alert[]
 
   @@unique([productId, storeId])
+  @@index([storeId])
   @@map("store_products")
 }
 
@@ -119,6 +120,7 @@ model Tracking {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@index([productId])
   @@map("trackings")
 }
 
@@ -142,6 +144,7 @@ model Alert {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   storeProduct StoreProduct? @relation(fields: [storeProductId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
   @@map("alerts")
 }
 
@@ -156,6 +159,7 @@ model PushToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("push_tokens")
 }
 
@@ -172,6 +176,7 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("notifications")
 }
 
@@ -184,6 +189,7 @@ model ScraperLog {
   duration    Int?
   createdAt   DateTime @default(now())
 
+  @@index([createdAt])
   @@map("scraper_logs")
 }
 
@@ -198,6 +204,7 @@ model Comment {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([productId])
   @@map("comments")
 }
 

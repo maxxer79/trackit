@@ -129,11 +129,25 @@ async function ensureSchema(): Promise<void> {
   try {
     const { prisma } = await import('./config/database');
     await prisma.$executeRawUnsafe('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "modelNumber" TEXT');
-    // Index for time-ordered ScraperLog reads (worker health, log page, health
-    // aggregation all order/filter by createdAt).
-    await prisma.$executeRawUnsafe(
-      'CREATE INDEX IF NOT EXISTS "idx_scraper_logs_created_at" ON "scraper_logs" ("createdAt")'
-    );
+
+    // Performance indexes. Applied here rather than via `prisma migrate` (which
+    // we don't run on boot); IF NOT EXISTS makes this safe to re-run every boot.
+    // Names match Prisma's @@index convention (<table>_<col>_idx) so a future
+    // `prisma migrate` stays idempotent. Supersedes the earlier
+    // idx_scraper_logs_created_at index (renamed to the Prisma convention).
+    await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "idx_scraper_logs_created_at"');
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS "trackings_productId_idx" ON "trackings" ("productId")',
+      'CREATE INDEX IF NOT EXISTS "store_products_storeId_idx" ON "store_products" ("storeId")',
+      'CREATE INDEX IF NOT EXISTS "alerts_userId_idx" ON "alerts" ("userId")',
+      'CREATE INDEX IF NOT EXISTS "notifications_userId_idx" ON "notifications" ("userId")',
+      'CREATE INDEX IF NOT EXISTS "comments_productId_idx" ON "comments" ("productId")',
+      'CREATE INDEX IF NOT EXISTS "push_tokens_userId_idx" ON "push_tokens" ("userId")',
+      'CREATE INDEX IF NOT EXISTS "scraper_logs_createdAt_idx" ON "scraper_logs" ("createdAt")',
+    ];
+    for (const sql of indexes) {
+      await prisma.$executeRawUnsafe(sql);
+    }
     console.log('✅ Schema sync complete');
   } catch (err: any) {
     console.error('⚠️ Schema sync failed:', err.message);
