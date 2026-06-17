@@ -169,6 +169,10 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         notifySms: true,
         notifyDiscord: true,
         notifyPriceDrop: true,
+        quietHoursEnabled: true,
+        quietHoursStart: true,
+        quietHoursEnd: true,
+        timezone: true,
         phoneNumber: true,
         discordWebhook: true,
         autoBuyEnabled: true,
@@ -183,6 +187,10 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         pushEnabled: user.pushAlerts,
         discordEnabled: user.notifyDiscord,
         priceDropEnabled: user.notifyPriceDrop,
+        quietHoursEnabled: user.quietHoursEnabled,
+        quietHoursStart: user.quietHoursStart,
+        quietHoursEnd: user.quietHoursEnd,
+        timezone: user.timezone,
         phone: user.phoneNumber,
         discordWebhook: user.discordWebhook,
         autoBuyEnabled: user.autoBuyEnabled,
@@ -202,7 +210,11 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
  */
 export const updatePreferences = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { emailEnabled, smsEnabled, pushEnabled, discordEnabled, priceDropEnabled, phone, discordWebhook, autoBuyEnabled } = req.body;
+    const {
+      emailEnabled, smsEnabled, pushEnabled, discordEnabled, priceDropEnabled,
+      quietHoursEnabled, quietHoursStart, quietHoursEnd, timezone,
+      phone, discordWebhook, autoBuyEnabled,
+    } = req.body;
 
     const data: Record<string, unknown> = {};
     if (emailEnabled !== undefined) data.emailAlerts = !!emailEnabled;
@@ -210,6 +222,10 @@ export const updatePreferences = async (req: AuthRequest, res: Response): Promis
     if (pushEnabled !== undefined) data.pushAlerts = !!pushEnabled;
     if (discordEnabled !== undefined) data.notifyDiscord = !!discordEnabled;
     if (priceDropEnabled !== undefined) data.notifyPriceDrop = !!priceDropEnabled;
+    if (quietHoursEnabled !== undefined) data.quietHoursEnabled = !!quietHoursEnabled;
+    if (quietHoursStart !== undefined) data.quietHoursStart = quietHoursStart;
+    if (quietHoursEnd !== undefined) data.quietHoursEnd = quietHoursEnd;
+    if (timezone !== undefined) data.timezone = timezone || null;
     if (phone !== undefined) data.phoneNumber = phone || null;
     if (discordWebhook !== undefined) data.discordWebhook = discordWebhook || null;
     if (autoBuyEnabled !== undefined) data.autoBuyEnabled = !!autoBuyEnabled;

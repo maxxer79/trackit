@@ -12,6 +12,10 @@ interface NotifPrefs {
   pushEnabled: boolean;
   discordEnabled: boolean;
   priceDropEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
+  timezone: string | null;
   phone: string | null;
   discordWebhook: string | null;
   autoBuyEnabled: boolean;
@@ -25,6 +29,15 @@ interface NotifPrefs {
 const VAPID_PUBLIC_KEY =
   import.meta.env.VITE_VAPID_PUBLIC_KEY ||
   'BDcSMPCqyzWtuL__6mEqEZDj3kMktKkqtZDCqCvXPo6Vx38xqzPgXypR4qk1spu0d067c-hTuFh4FcdkSf0EOOM';
+
+// Quiet-hours times are stored as minutes-from-midnight; the <input type="time">
+// uses "HH:MM".
+const minToTime = (m?: number | null): string =>
+  m == null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const timeToMin = (t: string): number | null => {
+  const [h, m] = t.split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -85,7 +98,10 @@ export default function SettingsPage() {
     setDirty(true);
   };
 
-  const handleSave = () => savePrefs.mutate(form);
+  // Capture the browser's IANA timezone on every save so quiet-hours math uses
+  // the user's actual local time.
+  const handleSave = () =>
+    savePrefs.mutate({ ...form, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
 
   const subscribePush = async () => {
     if (!VAPID_PUBLIC_KEY) {
@@ -291,6 +307,48 @@ export default function SettingsPage() {
               onChange={(v) => handleChange('priceDropEnabled', v)}
             />
           </div>
+        </motion.div>
+
+        {/* Quiet Hours */}
+        <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-1">Quiet Hours</h2>
+          <p className="text-footnote text-dark-label2 mb-5">
+            Pause email, SMS, push, and Discord alerts during these hours. You'll still see them in the app.
+          </p>
+
+          <ToggleRow
+            icon="🌙"
+            label="Enable Quiet Hours"
+            description="Suppress notification pings during a nightly window"
+            checked={form.quietHoursEnabled ?? false}
+            onChange={(v) => handleChange('quietHoursEnabled', v)}
+          />
+
+          {form.quietHoursEnabled && (
+            <div className="mt-4 flex items-center gap-4 flex-wrap ml-12">
+              <label className="flex items-center gap-2 text-footnote text-dark-label2">
+                From
+                <input
+                  type="time"
+                  value={minToTime(form.quietHoursStart)}
+                  onChange={(e) => handleChange('quietHoursStart', timeToMin(e.target.value))}
+                  className="input text-sm w-auto"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-footnote text-dark-label2">
+                to
+                <input
+                  type="time"
+                  value={minToTime(form.quietHoursEnd)}
+                  onChange={(e) => handleChange('quietHoursEnd', timeToMin(e.target.value))}
+                  className="input text-sm w-auto"
+                />
+              </label>
+              <span className="text-caption2 text-dark-label3">
+                {Intl.DateTimeFormat().resolvedOptions().timeZone}
+              </span>
+            </div>
+          )}
         </motion.div>
 
         {/* AutoBuy */}

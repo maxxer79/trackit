@@ -72,6 +72,10 @@ export const updatePreferencesSchema = z.object({
   discordEnabled: z.boolean().optional(),
   priceDropEnabled: z.boolean().optional(),
   autoBuyEnabled: z.boolean().optional(),
+  quietHoursEnabled: z.boolean().optional(),
+  quietHoursStart: z.number().int().min(0).max(1439).nullish(),
+  quietHoursEnd: z.number().int().min(0).max(1439).nullish(),
+  timezone: z.string().nullish(),
   // nullish: the GET→PUT round-trip sends null for an unset phone/webhook.
   phone: z.string().trim().nullish(),
   discordWebhook: z

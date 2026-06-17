@@ -6,6 +6,7 @@ import { sendDiscordAlert } from './discord';
 import logger from '../utils/logger';
 import { NotificationError } from '../errors';
 import { autoBuyOutcome } from './autoBuy';
+import { isQuietNow } from './quietHours';
 
 /**
  * A single notification channel failing must not block the others, so per-channel
@@ -34,6 +35,10 @@ interface NotificationPayload {
     discordWebhook: string | null;
     autoBuyEnabled: boolean;
     pushSubscriptions?: any[];
+    quietHoursEnabled?: boolean;
+    quietHoursStart?: number | null;
+    quietHoursEnd?: number | null;
+    timezone?: string | null;
   };
   product: {
     id: string;
@@ -66,10 +71,27 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
   } = payload;
   const kind = payload.kind ?? 'RESTOCK';
 
+  // Quiet hours suppress the external pings (email/sms/push/discord) but NOT the
+  // recorded Alert, the realtime socket event, or AutoBuy — you still see it in
+  // the app, you just don't get pinged at 3am.
+  const quiet = isQuietNow({
+    quietHoursEnabled: !!user.quietHoursEnabled,
+    quietHoursStart: user.quietHoursStart ?? null,
+    quietHoursEnd: user.quietHoursEnd ?? null,
+    timezone: user.timezone ?? null,
+  });
+  if (quiet) {
+    logger.info('external notifications suppressed — quiet hours', {
+      userId: user.id,
+      productSlug: product.slug,
+      kind,
+    });
+  }
+
   const results: Promise<void>[] = [];
 
   // Email notification
-  if (user.notifyEmail && user.email) {
+  if (!quiet && user.notifyEmail && user.email) {
     results.push(
       sendEmailAlert({
         to: user.email,
@@ -86,7 +108,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
   }
 
   // SMS notification
-  if (user.notifySms && user.phoneNumber) {
+  if (!quiet && user.notifySms && user.phoneNumber) {
     results.push(
       sendSmsAlert({
         to: user.phoneNumber,
@@ -102,7 +124,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
   }
 
   // Web Push notification
-  if (user.notifyPush) {
+  if (!quiet && user.notifyPush) {
     results.push(
       sendPushAlert({
         userId: user.id,
@@ -119,7 +141,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
   }
 
   // Discord webhook notification
-  if (user.notifyDiscord && user.discordWebhook) {
+  if (!quiet && user.notifyDiscord && user.discordWebhook) {
     results.push(
       sendDiscordAlert({
         webhookUrl: user.discordWebhook,
