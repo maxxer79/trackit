@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth';
 import { useThemeStore } from '../../store/theme';
+import ConnectionStatus from '../ui/ConnectionStatus';
 import clsx from 'clsx';
 
 export default function Navbar() {
@@ -79,6 +80,9 @@ export default function Navbar() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          {/* Realtime connection indicator */}
+          <ConnectionStatus />
+
           {/* Theme toggle */}
           <button
             onClick={cycleTheme}

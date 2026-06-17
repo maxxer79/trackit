@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/auth';
 import { useThemeStore } from './store/theme';
 import { useStockUpdates } from './hooks/useStockUpdates';
+import { useSocketConnection } from './hooks/useSocketConnection';
 import Layout from './components/layout/Layout';
 import LoadingScreen from './components/ui/LoadingScreen';
 
@@ -48,6 +49,7 @@ export default function App() {
   const theme = useThemeStore((s) => s.theme);
 
   useStockUpdates();
+  useSocketConnection();
 
   useEffect(() => {
     // Apply persisted theme on mount
