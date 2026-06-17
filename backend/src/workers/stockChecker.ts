@@ -234,8 +234,9 @@ stockCheckerQueue.process(
               await sendNotifications({
                 user: {
                   ...tracker.user,
-                  notifyEmail: tracker.user.emailAlerts,
-                  notifyPush: tracker.user.pushAlerts,
+                  // Effective channel = user's global pref AND this item's opt-in.
+                  notifyEmail: tracker.user.emailAlerts && tracker.notifyEmail,
+                  notifyPush: tracker.user.pushAlerts && tracker.notifyPush,
                   autoBuyEnabled: tracker.user.autoBuyEnabled,
                 },
                 product,
@@ -300,8 +301,9 @@ stockCheckerQueue.process(
                 await sendNotifications({
                   user: {
                     ...tracker.user,
-                    notifyEmail: tracker.user.emailAlerts,
-                    notifyPush: tracker.user.pushAlerts,
+                    // Effective channel = user's global pref AND this item's opt-in.
+                    notifyEmail: tracker.user.emailAlerts && tracker.notifyEmail,
+                    notifyPush: tracker.user.pushAlerts && tracker.notifyPush,
                     autoBuyEnabled: tracker.user.autoBuyEnabled,
                   },
                   product,

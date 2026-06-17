@@ -100,16 +100,22 @@ export function useUpdateTracking() {
   return useMutation({
     mutationFn: async ({
       productId,
+      notifyEmail,
+      notifyPush,
       watchStores,
       autoBuyEnabled,
       autoBuyMaxPrice,
     }: {
       productId: string;
+      notifyEmail?: boolean;
+      notifyPush?: boolean;
       watchStores?: string[];
       autoBuyEnabled?: boolean;
       autoBuyMaxPrice?: number | null;
     }) => {
       const { data } = await api.patch(`/tracking/${productId}`, {
+        notifyEmail,
+        notifyPush,
         watchStores,
         autoBuyEnabled,
         autoBuyMaxPrice,

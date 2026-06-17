@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useTracking, useRemoveTracking } from '../hooks/useProducts';
+import { useTracking, useRemoveTracking, useUpdateTracking } from '../hooks/useProducts';
 import { useAuthStore } from '../store/auth';
 import StatusBadge from '../components/ui/StatusBadge';
 import { ProductCardSkeleton } from '../components/ui/Skeleton';
@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const { data: tracking, isLoading } = useTracking();
   const removeTracking = useRemoveTracking();
+  const updateTracking = useUpdateTracking();
 
   const handleRemove = async (productId: string, productName: string) => {
     try {
@@ -185,6 +186,21 @@ export default function DashboardPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
+                    {/* Per-item channel toggles */}
+                    <button
+                      onClick={() => updateTracking.mutate({ productId: item.product.id, notifyEmail: !item.notifyEmail })}
+                      className={`btn-icon w-8 h-8 text-sm ${item.notifyEmail ? 'text-apple-blue bg-apple-blue/10' : 'text-dark-label3 hover:text-dark-label1'}`}
+                      title={item.notifyEmail ? 'Email alerts on — click to mute for this item' : 'Email alerts off — click to enable for this item'}
+                    >
+                      📧
+                    </button>
+                    <button
+                      onClick={() => updateTracking.mutate({ productId: item.product.id, notifyPush: !item.notifyPush })}
+                      className={`btn-icon w-8 h-8 text-sm ${item.notifyPush ? 'text-apple-blue bg-apple-blue/10' : 'text-dark-label3 hover:text-dark-label1'}`}
+                      title={item.notifyPush ? 'Push alerts on — click to mute for this item' : 'Push alerts off — click to enable for this item'}
+                    >
+                      🔔
+                    </button>
                     {bestStatus !== 'UNKNOWN' && bestStatus !== 'OUT_OF_STOCK' && (
                       <a
                         href={item.stockStatuses?.find((s: any) => s.status === bestStatus)?.productUrl}

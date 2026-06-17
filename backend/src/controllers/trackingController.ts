@@ -100,6 +100,32 @@ export const removeTracking = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+// PATCH /api/tracking/:productId — per-item notification preferences.
+export const updateTracking = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { productId } = req.params;
+    const { notifyEmail, notifyPush, watchStores, autoBuyEnabled, autoBuyMaxPrice } = req.body;
+
+    const tracking = await prisma.tracking.findUnique({
+      where: { userId_productId: { userId: req.user!.id, productId } },
+    });
+    if (!tracking) { res.status(404).json({ error: 'Tracking not found' }); return; }
+
+    const data: Record<string, unknown> = {};
+    if (notifyEmail !== undefined) data.notifyEmail = !!notifyEmail;
+    if (notifyPush !== undefined) data.notifyPush = !!notifyPush;
+    if (watchStores !== undefined) data.watchStores = watchStores;
+    if (autoBuyEnabled !== undefined) data.autoBuyEnabled = !!autoBuyEnabled;
+    if (autoBuyMaxPrice !== undefined) data.autoBuyMaxPrice = autoBuyMaxPrice;
+
+    const updated = await prisma.tracking.update({ where: { id: tracking.id }, data });
+    res.json(updated);
+  } catch (error) {
+    logger.error('UpdateTracking error', error);
+    res.status(500).json({ error: 'Failed to update tracking' });
+  }
+};
+
 // GET /api/tracking/export — CSV of the user's tracked items (one row per store listing).
 export const exportTrackings = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

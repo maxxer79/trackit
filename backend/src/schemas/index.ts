@@ -52,6 +52,17 @@ export const addTrackingSchema = z.object({
   watchStores: z.array(z.string()).optional(),
 });
 
+// PATCH /api/tracking/:productId — per-item notification preferences.
+export const updateTrackingSchema = z
+  .object({
+    notifyEmail: z.boolean().optional(),
+    notifyPush: z.boolean().optional(),
+    watchStores: z.array(z.string()).optional(),
+    autoBuyEnabled: z.boolean().optional(),
+    autoBuyMaxPrice: z.number().nonnegative().nullish(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
+
 // ── Comments ──────────────────────────────────────────────────────────────────
 
 export const createCommentSchema = z.object({
