@@ -21,6 +21,7 @@ model User {
   browserAlerts  Boolean   @default(true)
   notifySms      Boolean   @default(false)
   notifyDiscord  Boolean   @default(false)
+  notifyPriceDrop Boolean  @default(false)
   phoneNumber    String?
   discordWebhook String?
   autoBuyEnabled Boolean   @default(false)

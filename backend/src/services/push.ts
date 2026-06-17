@@ -18,10 +18,12 @@ interface PushPayload {
   price?: number | null;
   status: string;
   productSlug: string;
+  kind?: 'RESTOCK' | 'PRICE_DROP';
+  previousPrice?: number | null;
 }
 
 export async function sendPushAlert(payload: PushPayload): Promise<void> {
-  const { userId, productName, storeName, productUrl, price, status, productSlug } = payload;
+  const { userId, productName, storeName, productUrl, price, status, productSlug, kind, previousPrice } = payload;
 
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
     console.warn('⚠️ VAPID keys not configured, skipping push notifications');
@@ -35,16 +37,23 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
   if (subscriptions.length === 0) return;
 
   const priceStr = price ? ` — $${price.toFixed(2)}` : '';
+  const isDrop = kind === 'PRICE_DROP';
   const statusLabel = status === 'LIMITED' ? 'Limited Stock' : status === 'PREORDER' ? 'Pre-order Available' : 'In Stock';
+  const wasStr = previousPrice ? ` (was $${previousPrice.toFixed(2)})` : '';
+  const title = isDrop ? `💸 Price drop: ${productName}` : `🟢 ${productName} is ${statusLabel}!`;
+  const body = isDrop
+    ? `Now $${price?.toFixed(2) ?? '?'}${wasStr} at ${storeName}. Tap to shop.`
+    : `Available at ${storeName}${priceStr}. Tap to shop now.`;
+  const tagPrefix = isDrop ? 'pricedrop' : 'stock';
 
   const notification = JSON.stringify({
-    title: `🟢 ${productName} is ${statusLabel}!`,
-    body: `Available at ${storeName}${priceStr}. Tap to shop now.`,
+    title,
+    body,
     icon: '/icons/icon-192x192.png',
     badge: '/icons/badge-72x72.png',
     url: productUrl,
     productSlug,
-    tag: `stock-${productSlug}-${storeName.toLowerCase().replace(/\s/g, '-')}`,
+    tag: `${tagPrefix}-${productSlug}-${storeName.toLowerCase().replace(/\s/g, '-')}`,
     data: {
       productUrl,
       productSlug,

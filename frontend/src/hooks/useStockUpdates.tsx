@@ -15,6 +15,10 @@ interface StockUpdateEvent {
   productUrl: string;
 }
 
+interface PriceDropEvent extends StockUpdateEvent {
+  previousPrice?: number | null;
+}
+
 export function useStockUpdates() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -58,10 +62,43 @@ export function useStockUpdates() {
       );
     };
 
+    const handlePriceDrop = (event: PriceDropEvent) => {
+      qc.invalidateQueries({ queryKey: ['product', event.productSlug] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['tracking'] });
+      qc.invalidateQueries({ queryKey: ['alerts'] });
+
+      const wasStr = event.previousPrice ? ` (was $${event.previousPrice.toFixed(2)})` : '';
+      toast.custom(
+        (t) => (
+          <a
+            href={event.productUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-start gap-3 p-4 bg-dark-surface1 border border-apple-blue/30
+                       rounded-apple-lg cursor-pointer max-w-sm
+                       ${t.visible ? 'animate-slide-down' : 'opacity-0'}`}
+          >
+            <span className="text-xl mt-0.5">💸</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-dark-label1 text-subhead truncate">{event.productName}</p>
+              <p className="text-footnote text-apple-blue mt-0.5">
+                Price drop at {event.storeName}
+                {event.price != null ? ` — $${event.price.toFixed(2)}` : ''}{wasStr}
+              </p>
+            </div>
+          </a>
+        ),
+        { duration: 8000, id: `pricedrop-${event.productSlug}-${event.storeSlug}` }
+      );
+    };
+
     socket.on('stock-update', handleStockUpdate);
+    socket.on('price-drop', handlePriceDrop);
 
     return () => {
       socket.off('stock-update', handleStockUpdate);
+      socket.off('price-drop', handlePriceDrop);
     };
   }, [user, qc]);
 }

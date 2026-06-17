@@ -2,6 +2,7 @@ import Bull from 'bull';
 import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
 import { isInStock, stockEventChanged } from '../scrapers/stockState';
+import { isPriceDrop } from '../services/priceDrop';
 import { sendNotifications } from '../services/notifications';
 import { ScraperError } from '../errors';
 import { evaluateStaleness } from './workerHealth';
@@ -242,6 +243,72 @@ stockCheckerQueue.process(
                 autoBuyEnabled: tracker.autoBuyEnabled,
                 autoBuyMaxPrice: tracker.autoBuyMaxPrice ? Number(tracker.autoBuyMaxPrice) : undefined,
               });
+            }
+          }
+
+          // Price-drop alerts (opt-in): in stock AND a meaningful drop vs the
+          // previously stored price. Independent of the restock transition above.
+          if (isInStock(result.status) && isPriceDrop(listing.price, result.price)) {
+            const dropTrackers = await prisma.tracking.findMany({
+              where: {
+                productId: product.id,
+                isActive: true,
+                user: { notifyPriceDrop: true },
+                OR: [
+                  { watchStores: { isEmpty: true } },
+                  { watchStores: { has: storeSlug } },
+                ],
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true, email: true, name: true, emailAlerts: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true,
+                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                  },
+                },
+              },
+            });
+
+            if (dropTrackers.length > 0) {
+              logger.info('price drop detected — notifying trackers', {
+                ...ctx,
+                price: result.price,
+                previousPrice: listing.price,
+                trackerCount: dropTrackers.length,
+              });
+
+              const { getIO } = await import('../socket/index');
+              getIO()?.emit('price-drop', {
+                productId: product.id,
+                productSlug: product.slug,
+                productName: product.name,
+                storeSlug,
+                storeName: listing.store.name,
+                status: result.status,
+                price: result.price,
+                previousPrice: listing.price,
+                productUrl: result.productUrl ?? listing.url,
+              });
+
+              for (const tracker of dropTrackers) {
+                await sendNotifications({
+                  user: {
+                    ...tracker.user,
+                    notifyEmail: tracker.user.emailAlerts,
+                    notifyPush: tracker.user.pushAlerts,
+                    autoBuyEnabled: tracker.user.autoBuyEnabled,
+                  },
+                  product,
+                  storeSlug,
+                  storeName: listing.store.name,
+                  productUrl: result.productUrl ?? listing.url,
+                  price: result.price,
+                  status: result.status,
+                  kind: 'PRICE_DROP',
+                  previousPrice: listing.price,
+                });
+              }
             }
           }
 

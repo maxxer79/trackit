@@ -70,6 +70,7 @@ export const updatePreferencesSchema = z.object({
   smsEnabled: z.boolean().optional(),
   pushEnabled: z.boolean().optional(),
   discordEnabled: z.boolean().optional(),
+  priceDropEnabled: z.boolean().optional(),
   autoBuyEnabled: z.boolean().optional(),
   // nullish: the GET→PUT round-trip sends null for an unset phone/webhook.
   phone: z.string().trim().nullish(),

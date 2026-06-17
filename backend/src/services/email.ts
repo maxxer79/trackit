@@ -8,6 +8,8 @@ interface EmailPayload {
   productUrl: string;
   price?: number | null;
   status: string;
+  kind?: 'RESTOCK' | 'PRICE_DROP';
+  previousPrice?: number | null;
 }
 
 function createTransporter() {
@@ -49,12 +51,30 @@ function statusLabel(status: string): string {
 }
 
 export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
-  const { to, name, productName, storeName, productUrl, price, status } = payload;
+  const { to, name, productName, storeName, productUrl, price, status, kind, previousPrice } = payload;
 
   const transporter = createTransporter();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'alerts@trackit.app';
   const priceStr = formatPrice(price);
   const statusStr = statusLabel(status);
+
+  const isDrop = kind === 'PRICE_DROP';
+  const subtitle = isDrop ? 'Price Drop Alert' : 'Stock Alert Notification';
+  const headline = isDrop
+    ? `Good news — the price just dropped on an item you're tracking.`
+    : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
+  const priceCardHtml = isDrop
+    ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price?.toFixed(2) ?? '?'}${
+        previousPrice
+          ? ` <span style="font-size:15px;color:#8e8e93;font-weight:500;text-decoration:line-through;">$${previousPrice.toFixed(2)}</span>`
+          : ''
+      }</div>`
+    : price
+      ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price.toFixed(2)}</div>`
+      : '';
+  const subject = isDrop
+    ? `💸 Price drop: ${productName} now $${price?.toFixed(2) ?? ''} at ${storeName}`
+    : `🟢 ${productName} is ${statusStr} at ${storeName}${priceStr}`;
 
   const html = `
 <!DOCTYPE html>
@@ -73,7 +93,7 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
           <tr>
             <td style="background:linear-gradient(135deg,#0071e3,#00c6ff);border-radius:16px 16px 0 0;padding:32px 40px;text-align:center;">
               <div style="font-size:28px;font-weight:700;color:#fff;letter-spacing:-0.5px;">TrackIt</div>
-              <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:4px;">Stock Alert Notification</div>
+              <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:4px;">${subtitle}</div>
             </td>
           </tr>
           <!-- Body -->
@@ -81,14 +101,14 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
             <td style="background:#1c1c1e;padding:40px;">
               <p style="color:#ebebf5;font-size:16px;margin:0 0 8px;">Hi ${name || 'there'},</p>
               <p style="color:#ebebf5;font-size:16px;margin:0 0 28px;">
-                Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.
+                ${headline}
               </p>
 
               <!-- Product Card -->
               <div style="background:#2c2c2e;border-radius:12px;padding:24px;margin-bottom:28px;">
                 <div style="font-size:20px;font-weight:600;color:#fff;margin-bottom:8px;">${productName}</div>
                 <div style="font-size:14px;color:#8e8e93;margin-bottom:16px;">Available at <strong style="color:#ebebf5;">${storeName}</strong></div>
-                ${price ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price.toFixed(2)}</div>` : ''}
+                ${priceCardHtml}
               </div>
 
               <!-- CTA Button -->
@@ -130,7 +150,7 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
   await transporter.sendMail({
     from: `"TrackIt Alerts" <${from}>`,
     to,
-    subject: `🟢 ${productName} is ${statusStr} at ${storeName}${priceStr}`,
+    subject,
     html,
   });
 }

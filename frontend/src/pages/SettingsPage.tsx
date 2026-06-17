@@ -11,6 +11,7 @@ interface NotifPrefs {
   smsEnabled: boolean;
   pushEnabled: boolean;
   discordEnabled: boolean;
+  priceDropEnabled: boolean;
   phone: string | null;
   discordWebhook: string | null;
   autoBuyEnabled: boolean;
@@ -280,6 +281,15 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+
+            {/* Price drops */}
+            <ToggleRow
+              icon="💸"
+              label="Price Drop Alerts"
+              description="Get notified when a tracked item's price falls"
+              checked={form.priceDropEnabled ?? false}
+              onChange={(v) => handleChange('priceDropEnabled', v)}
+            />
           </div>
         </motion.div>
 

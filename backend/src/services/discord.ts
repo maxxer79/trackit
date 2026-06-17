@@ -7,6 +7,8 @@ interface DiscordPayload {
   productUrl: string;
   price?: number | null;
   status: string;
+  kind?: 'RESTOCK' | 'PRICE_DROP';
+  previousPrice?: number | null;
 }
 
 function statusColor(status: string): number {
@@ -28,17 +30,24 @@ function statusLabel(status: string): string {
 }
 
 export async function sendDiscordAlert(payload: DiscordPayload): Promise<void> {
-  const { webhookUrl, productName, storeName, productUrl, price, status } = payload;
+  const { webhookUrl, productName, storeName, productUrl, price, status, kind, previousPrice } = payload;
 
   if (!webhookUrl) return;
+
+  const isDrop = kind === 'PRICE_DROP';
+  const priceField = isDrop
+    ? { name: '💸 Price drop', value: `$${price?.toFixed(2) ?? '?'}${previousPrice ? ` (was $${previousPrice.toFixed(2)})` : ''}`, inline: true }
+    : price
+      ? { name: '💰 Price', value: `$${price.toFixed(2)}`, inline: true }
+      : null;
 
   const embed = {
     title: productName,
     url: productUrl,
-    color: statusColor(status),
-    description: `**${statusLabel(status)}** at **${storeName}**`,
+    color: isDrop ? 0x0071e3 : statusColor(status),
+    description: isDrop ? `**💸 Price drop** at **${storeName}**` : `**${statusLabel(status)}** at **${storeName}**`,
     fields: [
-      ...(price ? [{ name: '💰 Price', value: `$${price.toFixed(2)}`, inline: true }] : []),
+      ...(priceField ? [priceField] : []),
       { name: '🏪 Store', value: storeName, inline: true },
     ],
     footer: {

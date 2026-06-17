@@ -168,6 +168,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         pushAlerts: true,
         notifySms: true,
         notifyDiscord: true,
+        notifyPriceDrop: true,
         phoneNumber: true,
         discordWebhook: true,
         autoBuyEnabled: true,
@@ -181,6 +182,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         smsEnabled: user.notifySms,
         pushEnabled: user.pushAlerts,
         discordEnabled: user.notifyDiscord,
+        priceDropEnabled: user.notifyPriceDrop,
         phone: user.phoneNumber,
         discordWebhook: user.discordWebhook,
         autoBuyEnabled: user.autoBuyEnabled,
@@ -200,13 +202,14 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
  */
 export const updatePreferences = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { emailEnabled, smsEnabled, pushEnabled, discordEnabled, phone, discordWebhook, autoBuyEnabled } = req.body;
+    const { emailEnabled, smsEnabled, pushEnabled, discordEnabled, priceDropEnabled, phone, discordWebhook, autoBuyEnabled } = req.body;
 
     const data: Record<string, unknown> = {};
     if (emailEnabled !== undefined) data.emailAlerts = !!emailEnabled;
     if (smsEnabled !== undefined) data.notifySms = !!smsEnabled;
     if (pushEnabled !== undefined) data.pushAlerts = !!pushEnabled;
     if (discordEnabled !== undefined) data.notifyDiscord = !!discordEnabled;
+    if (priceDropEnabled !== undefined) data.notifyPriceDrop = !!priceDropEnabled;
     if (phone !== undefined) data.phoneNumber = phone || null;
     if (discordWebhook !== undefined) data.discordWebhook = discordWebhook || null;
     if (autoBuyEnabled !== undefined) data.autoBuyEnabled = !!autoBuyEnabled;

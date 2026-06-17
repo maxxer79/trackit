@@ -47,6 +47,9 @@ interface NotificationPayload {
   status: string;
   autoBuyEnabled?: boolean;
   autoBuyMaxPrice?: number;
+  // 'PRICE_DROP' reuses this whole pipeline with price-drop-flavored messaging.
+  kind?: 'RESTOCK' | 'PRICE_DROP';
+  previousPrice?: number | null;
 }
 
 export async function sendNotifications(payload: NotificationPayload): Promise<void> {
@@ -59,7 +62,9 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
     status,
     autoBuyEnabled,
     autoBuyMaxPrice,
+    previousPrice,
   } = payload;
+  const kind = payload.kind ?? 'RESTOCK';
 
   const results: Promise<void>[] = [];
 
@@ -74,6 +79,8 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productUrl,
         price,
         status,
+        kind,
+        previousPrice,
       }).catch((err) => logChannelFailure('email', user.id, product.slug, err))
     );
   }
@@ -88,6 +95,8 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productUrl,
         price,
         status,
+        kind,
+        previousPrice,
       }).catch((err) => logChannelFailure('sms', user.id, product.slug, err))
     );
   }
@@ -103,6 +112,8 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         price,
         status,
         productSlug: product.slug,
+        kind,
+        previousPrice,
       }).catch((err) => logChannelFailure('push', user.id, product.slug, err))
     );
   }
@@ -117,6 +128,8 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productUrl,
         price,
         status,
+        kind,
+        previousPrice,
       }).catch((err) => logChannelFailure('discord', user.id, product.slug, err))
     );
   }
@@ -132,6 +145,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productId: product.id,
         storeSlug: payload.storeSlug,
         storeName,
+        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : 'IN_STOCK',
         status: status as any,
         price,
         productUrl,
@@ -149,10 +163,10 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
     });
   }
 
-  // AutoBuy — execution is still a stub, but EVERY evaluation for an enabled
-  // user is written to the AutoBuyAttempt audit trail (money-adjacent, so we
-  // want the paper trail in place before AutoBuy ever moves money).
-  if (autoBuyEnabled && user.autoBuyEnabled) {
+  // AutoBuy — restock-only (a price drop on an already-in-stock item shouldn't
+  // trigger a buy). Execution is still a stub, but EVERY evaluation for an
+  // enabled user is written to the AutoBuyAttempt audit trail.
+  if (kind === 'RESTOCK' && autoBuyEnabled && user.autoBuyEnabled) {
     const outcome = autoBuyOutcome(price, autoBuyMaxPrice);
 
     try {
