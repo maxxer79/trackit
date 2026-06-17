@@ -4,6 +4,7 @@ import { getScraperForStore } from '../scrapers/index';
 import { isInStock } from '../scrapers/stockState';
 import { sendNotifications } from '../services/notifications';
 import { ScraperError } from '../errors';
+import { evaluateStaleness } from './workerHealth';
 import logger from '../utils/logger';
 
 /**
@@ -264,20 +265,33 @@ stockCheckerQueue.process(
   }
 );
 
-// Schedule all active products for checking
+// Schedule all active products for checking.
+//
+// Idempotent: every existing repeatable is cleared first, then each product is
+// (re)scheduled with a STABLE jobId. Without this, re-running on every boot (or
+// changing SCRAPER_INTERVAL_MINUTES) could leave orphaned repeatable schedulers
+// firing for the same product — checking it more often than intended and
+// amplifying bot-blocks. A stable jobId makes the repeat key deterministic so a
+// product can only ever have one active schedule.
 export async function scheduleAllProducts() {
+  const intervalMinutes = parseInt(process.env.SCRAPER_INTERVAL_MINUTES || '5', 10);
+
+  // Clear any pre-existing repeatables (orphans from prior boots / interval changes).
+  const existing = await stockCheckerQueue.getRepeatableJobs();
+  for (const r of existing) {
+    await stockCheckerQueue.removeRepeatableByKey(r.key);
+  }
+
   const products = await prisma.product.findMany({
     where: { isActive: true },
     select: { id: true },
   });
 
-  const intervalMinutes = parseInt(process.env.SCRAPER_INTERVAL_MINUTES || '5');
-
-  for (let i = 0; i < products.length; i++) {
+  for (const p of products) {
     await stockCheckerQueue.add(
-      { productId: products[i].id },
+      { productId: p.id },
       {
-        delay: i * 1000,
+        jobId: `product:${p.id}`, // stable → re-scheduling is idempotent
         repeat: { every: intervalMinutes * 60 * 1000 },
       }
     );
@@ -286,7 +300,48 @@ export async function scheduleAllProducts() {
   logger.info('scheduled products for stock checking', {
     count: products.length,
     intervalMinutes,
+    clearedRepeatables: existing.length,
   });
+}
+
+/**
+ * Liveness/health of the worker itself (not just the HTTP server). Surfaced at
+ * GET /health/worker so a monitor can detect a silently-dead scheduler — Redis
+ * unreachable, or no scrape recorded within ~3 cycles.
+ */
+export async function getWorkerHealth() {
+  const intervalMinutes = parseInt(process.env.SCRAPER_INTERVAL_MINUTES || '5', 10);
+
+  let redisOk = true;
+  let counts: Record<string, number> | null = null;
+  try {
+    counts = await stockCheckerQueue.getJobCounts();
+  } catch {
+    redisOk = false;
+  }
+
+  let lastCheckAt: Date | null = null;
+  try {
+    const last = await prisma.scraperLog.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    lastCheckAt = last?.createdAt ?? null;
+  } catch {
+    lastCheckAt = null;
+  }
+
+  const { stale, ageMs, staleAfterMs } = evaluateStaleness(lastCheckAt, intervalMinutes);
+  return {
+    healthy: redisOk && !stale,
+    redisOk,
+    stale,
+    lastCheckAt,
+    lastCheckAgeMs: ageMs,
+    staleAfterMs,
+    intervalMinutes,
+    counts,
+  };
 }
 
 export default stockCheckerQueue;

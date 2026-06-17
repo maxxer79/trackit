@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { initSocket } from './socket/index';
-import { scheduleAllProducts } from './workers/stockChecker';
+import { scheduleAllProducts, getWorkerHealth } from './workers/stockChecker';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
 
@@ -78,6 +78,20 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: BACKEND_VERSION, timestamp: new Date().toISOString() });
 });
 
+// Worker liveness — unlike /health (HTTP only), this reports whether the Bull
+// scheduler is actually alive and checking (Redis reachable + recent scrapes).
+// Returns 503 when unhealthy so a monitor can alert on a silently-dead worker.
+const workerHealthHandler = async (_req: express.Request, res: express.Response): Promise<void> => {
+  try {
+    const health = await getWorkerHealth();
+    res.status(health.healthy ? 200 : 503).json(health);
+  } catch (err: any) {
+    res.status(503).json({ healthy: false, error: err.message });
+  }
+};
+app.get('/health/worker', workerHealthHandler);
+app.get('/api/health/worker', workerHealthHandler);
+
 // ─── API Routes ────────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
@@ -115,6 +129,11 @@ async function ensureSchema(): Promise<void> {
   try {
     const { prisma } = await import('./config/database');
     await prisma.$executeRawUnsafe('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "modelNumber" TEXT');
+    // Index for time-ordered ScraperLog reads (worker health, log page, health
+    // aggregation all order/filter by createdAt).
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "idx_scraper_logs_created_at" ON "scraper_logs" ("createdAt")'
+    );
     console.log('✅ Schema sync complete');
   } catch (err: any) {
     console.error('⚠️ Schema sync failed:', err.message);
