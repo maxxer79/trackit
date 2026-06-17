@@ -21,6 +21,32 @@ interface LogsResponse {
   totalPages: number;
 }
 
+type HealthLabel = 'healthy' | 'degraded' | 'down' | 'no_data';
+
+interface ScraperHealthRow {
+  storeSlug: string;
+  storeName: string;
+  total: number;
+  success: number;
+  successRate: number | null;
+  avgDurationMs: number | null;
+  lastSuccessAt: string | null;
+  health: HealthLabel;
+}
+
+interface ScraperHealthResponse {
+  windowHours: number;
+  generatedAt: string;
+  stores: ScraperHealthRow[];
+}
+
+const HEALTH_COLORS: Record<HealthLabel, string> = {
+  healthy: 'text-apple-green bg-apple-green/10 border-apple-green/20',
+  degraded: 'text-apple-orange bg-apple-orange/10 border-apple-orange/20',
+  down: 'text-apple-red bg-apple-red/10 border-apple-red/20',
+  no_data: 'text-dark-label2 bg-dark-surface2 border-dark-separator',
+};
+
 const STATUS_COLORS: Record<string, string> = {
   success: 'text-apple-green bg-apple-green/10 border-apple-green/20',
   IN_STOCK: 'text-apple-green bg-apple-green/10 border-apple-green/20',
@@ -48,6 +74,15 @@ export default function AdminLogs() {
     refetchInterval: 15_000,
   });
 
+  const { data: health } = useQuery<ScraperHealthResponse>({
+    queryKey: ['scraper-health'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/scrapers/health', { params: { hours: 24 } });
+      return data;
+    },
+    refetchInterval: 60_000,
+  });
+
   const successCount = data?.data.filter((l) => l.status === 'success').length ?? 0;
   const errorCount = data?.data.filter((l) => l.status === 'error' || l.status === 'blocked').length ?? 0;
   const avgDuration = data?.data
@@ -64,6 +99,61 @@ export default function AdminLogs() {
           </p>
         </div>
       </div>
+
+      {/* Per-retailer health — rolling window from logged scrape attempts */}
+      {health && health.stores.length > 0 && (
+        <div className="card p-4 mb-6">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-headline font-semibold text-dark-label1">
+              Scraper health · last {health.windowHours}h
+            </h2>
+            <span className="text-caption2 text-dark-label3">
+              advisory — scrapers are never auto-disabled
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-footnote">
+              <thead>
+                <tr className="text-caption2 text-dark-label3 text-left">
+                  <th className="py-1.5 pr-3 font-medium">Store</th>
+                  <th className="py-1.5 px-3 font-medium">Health</th>
+                  <th className="py-1.5 px-3 font-medium text-right">Success</th>
+                  <th className="py-1.5 px-3 font-medium text-right">Checks</th>
+                  <th className="py-1.5 px-3 font-medium text-right">Avg</th>
+                  <th className="py-1.5 pl-3 font-medium text-right">Last success</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-separator">
+                {health.stores.map((s) => (
+                  <tr key={s.storeSlug}>
+                    <td className="py-2 pr-3 text-dark-label1 font-medium">{s.storeName}</td>
+                    <td className="py-2 px-3">
+                      <span className={clsx(
+                        'text-caption2 font-bold px-2 py-0.5 rounded-pill border uppercase',
+                        HEALTH_COLORS[s.health]
+                      )}>
+                        {s.health.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums">
+                      {s.successRate != null ? `${Math.round(s.successRate * 100)}%` : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-dark-label2">{s.total}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-dark-label2">
+                      {s.avgDurationMs != null ? `${s.avgDurationMs}ms` : '—'}
+                    </td>
+                    <td className="py-2 pl-3 text-right text-dark-label2">
+                      {s.lastSuccessAt
+                        ? formatDistanceToNow(new Date(s.lastSuccessAt), { addSuffix: true })
+                        : 'never'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Summary */}
       {data && (

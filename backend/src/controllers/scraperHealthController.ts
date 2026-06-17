@@ -11,6 +11,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
+import { classifyHealth, ScraperHealthLabel } from '../scrapers/health';
 import logger from '../utils/logger';
 
 const PER_STORE_TIMEOUT_MS = 100000; // browser/FlareSolverr fallbacks queue up and can take 60s+
@@ -151,5 +152,109 @@ export const testAllScrapers = async (req: Request, res: Response): Promise<void
   } catch (error: any) {
     logger.error('testAllScrapers error', error);
     res.status(500).json({ error: 'Scraper test-all failed', message: error.message });
+  }
+};
+
+export interface ScraperHealthRow {
+  storeSlug: string;
+  storeName: string;
+  isActive: boolean;
+  total: number;
+  success: number;
+  unknown: number;
+  blocked: number;
+  error: number;
+  successRate: number | null;
+  avgDurationMs: number | null;
+  lastSuccessAt: Date | null;
+  lastCheckedAt: Date | null;
+  health: ScraperHealthLabel;
+}
+
+/**
+ * GET /admin/scrapers/health?hours=24 — aggregate the ScraperLog rows the
+ * scheduled worker writes into a per-retailer health view (success rate, last
+ * success, avg response time). Advisory only — it never disables a scraper.
+ */
+export const getScraperHealth = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hours = Math.min(Math.max(parseInt(String(req.query.hours ?? '24'), 10) || 24, 1), 24 * 30);
+    const since = new Date(Date.now() - hours * 3_600_000);
+
+    const [byStatus, totals, lastSuccess, lastAttempt, stores] = await Promise.all([
+      prisma.scraperLog.groupBy({
+        by: ['storeSlug', 'status'],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+      }),
+      prisma.scraperLog.groupBy({
+        by: ['storeSlug'],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+        _avg: { duration: true },
+      }),
+      prisma.scraperLog.groupBy({
+        by: ['storeSlug'],
+        where: { status: 'success' },
+        _max: { createdAt: true },
+      }),
+      prisma.scraperLog.groupBy({
+        by: ['storeSlug'],
+        _max: { createdAt: true },
+      }),
+      prisma.store.findMany({ where: { isActive: true }, select: { slug: true, name: true, isActive: true } }),
+    ]);
+
+    const totalsBy = new Map(totals.map((t) => [t.storeSlug, t]));
+    const lastSuccessBy = new Map(lastSuccess.map((t) => [t.storeSlug, t._max.createdAt]));
+    const lastAttemptBy = new Map(lastAttempt.map((t) => [t.storeSlug, t._max.createdAt]));
+    const nameBy = new Map(stores.map((s) => [s.slug, s.name]));
+    const activeBy = new Map(stores.map((s) => [s.slug, s.isActive]));
+
+    const statusBy = new Map<string, Record<string, number>>();
+    for (const row of byStatus) {
+      const m = statusBy.get(row.storeSlug) ?? {};
+      m[row.status] = row._count._all;
+      statusBy.set(row.storeSlug, m);
+    }
+
+    // Union of active stores and any store that has logs in the window.
+    const slugs = new Set<string>([...stores.map((s) => s.slug), ...statusBy.keys()]);
+
+    const rows: ScraperHealthRow[] = [...slugs].map((slug) => {
+      const counts = statusBy.get(slug) ?? {};
+      const success = counts.success ?? 0;
+      const unknown = counts.unknown ?? 0;
+      const blocked = counts.blocked ?? 0;
+      const error = counts.error ?? 0;
+      const total = totalsBy.get(slug)?._count._all ?? success + unknown + blocked + error;
+      const avg = totalsBy.get(slug)?._avg.duration ?? null;
+      return {
+        storeSlug: slug,
+        storeName: nameBy.get(slug) ?? slug,
+        isActive: activeBy.get(slug) ?? true,
+        total,
+        success,
+        unknown,
+        blocked,
+        error,
+        successRate: total > 0 ? success / total : null,
+        avgDurationMs: avg != null ? Math.round(avg) : null,
+        lastSuccessAt: lastSuccessBy.get(slug) ?? null,
+        lastCheckedAt: lastAttemptBy.get(slug) ?? null,
+        health: classifyHealth(total, success),
+      };
+    });
+
+    // Worst first so problems surface at the top.
+    const order: Record<ScraperHealthLabel, number> = { down: 0, degraded: 1, healthy: 2, no_data: 3 };
+    rows.sort(
+      (a, b) => order[a.health] - order[b.health] || (a.successRate ?? 1) - (b.successRate ?? 1)
+    );
+
+    res.json({ windowHours: hours, generatedAt: new Date().toISOString(), stores: rows });
+  } catch (error: any) {
+    logger.error('getScraperHealth error', error);
+    res.status(500).json({ error: 'Failed to compute scraper health', message: error.message });
   }
 };
