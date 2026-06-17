@@ -2,6 +2,7 @@ import Bull from 'bull';
 import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
 import { sendNotifications } from '../services/notifications';
+import logger from '../utils/logger';
 
 /**
  * Redis connection config. Prefers discrete REDIS_HOST/PORT/PASSWORD env
@@ -41,7 +42,7 @@ export const stockCheckerQueue = new Bull('stock-checker', {
 });
 
 stockCheckerQueue.on('error', (err) => {
-  console.error('\u274c Stock checker queue (Redis) error:', err.message);
+  logger.error('stock-checker queue (Redis) error', { error: err.message });
 });
 
 interface StockCheckJob {
@@ -54,6 +55,7 @@ stockCheckerQueue.process(
   parseInt(process.env.SCRAPER_CONCURRENCY || '5'),
   async (job) => {
     const { productId } = job.data as StockCheckJob;
+    const jobId = String(job.id);
 
     const product = await prisma.product.findUnique({
       where: { id: productId, isActive: true },
@@ -65,7 +67,17 @@ stockCheckerQueue.process(
       },
     });
 
-    if (!product) return;
+    if (!product) {
+      logger.warn('stock-check job skipped — product missing or inactive', { jobId, productId });
+      return;
+    }
+
+    logger.debug('stock-check job start', {
+      jobId,
+      productId,
+      productSlug: product.slug,
+      listings: product.storeListings.length,
+    });
 
     const results = await Promise.allSettled(
       product.storeListings.map(async (listing) => {
@@ -74,6 +86,14 @@ stockCheckerQueue.process(
         const startTime = Date.now();
         let logStatus = 'success';
         let logMessage: string | undefined;
+        // Correlation context attached to every log line for this listing check.
+        const ctx = {
+          jobId,
+          productId: product.id,
+          productSlug: product.slug,
+          storeSlug,
+          listingId: listing.id,
+        };
 
         try {
           const result = await scraper.checkStock(listing.url, listing.id);
@@ -94,6 +114,11 @@ stockCheckerQueue.process(
                 message: result.message ?? 'status unknown — kept previous value',
                 duration: Date.now() - startTime,
               },
+            });
+            logger.info('listing status unknown — kept previous value', {
+              ...ctx,
+              durationMs: Date.now() - startTime,
+              message: result.message,
             });
             return { listingId: listing.id, inStock: listing.inStock };
           }
@@ -159,6 +184,13 @@ stockCheckerQueue.process(
               },
             });
 
+            logger.info('restock detected — notifying trackers', {
+              ...ctx,
+              status: result.status,
+              price: result.price,
+              trackerCount: trackers.length,
+            });
+
             // Send notifications to each tracker
             for (const tracker of trackers) {
               await sendNotifications({
@@ -189,10 +221,24 @@ stockCheckerQueue.process(
             },
           });
 
+          logger.debug('listing checked', {
+            ...ctx,
+            status: result.status,
+            inStock: isNowInStock,
+            durationMs: Date.now() - startTime,
+          });
+
           return { listingId: listing.id, inStock: isNowInStock };
         } catch (error: any) {
           logStatus = error.response?.status === 429 ? 'blocked' : 'error';
           logMessage = error.message;
+
+          logger.warn('listing check failed', {
+            ...ctx,
+            logStatus,
+            durationMs: Date.now() - startTime,
+            error: logMessage,
+          });
 
           await prisma.scraperLog.create({
             data: {
@@ -230,7 +276,10 @@ export async function scheduleAllProducts() {
     );
   }
 
-  console.log(`Scheduled ${products.length} products for stock checking every ${intervalMinutes} minutes`);
+  logger.info('scheduled products for stock checking', {
+    count: products.length,
+    intervalMinutes,
+  });
 }
 
 export default stockCheckerQueue;
