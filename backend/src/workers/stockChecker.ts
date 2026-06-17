@@ -1,7 +1,7 @@
 import Bull from 'bull';
 import { prisma } from '../config/database';
 import { getScraperForStore } from '../scrapers/index';
-import { isInStock } from '../scrapers/stockState';
+import { isInStock, stockEventChanged } from '../scrapers/stockState';
 import { sendNotifications } from '../services/notifications';
 import { ScraperError } from '../errors';
 import { evaluateStaleness } from './workerHealth';
@@ -131,7 +131,9 @@ stockCheckerQueue.process(
           // (predicate extracted to scrapers/stockState.ts and unit-tested)
           const isNowInStock = isInStock(result.status);
 
-          // Update store listing with latest stock info
+          // Update store listing with latest stock info. `listing` still holds
+          // the PREVIOUS values in memory (the update mutates the DB row, not
+          // this object), so we can diff against it just below.
           await prisma.storeProduct.update({
             where: { id: listing.id },
             data: {
@@ -142,6 +144,34 @@ stockCheckerQueue.process(
               checkCount: { increment: 1 },
             },
           });
+
+          // Record a history point when status OR price changed. This is what
+          // populates StockEvent / the price-history chart from the SCHEDULED
+          // path (previously only the admin/manual checker wrote these, so
+          // history was sparse). Non-critical: never let it break the check.
+          if (
+            stockEventChanged(
+              { status: listing.stockStatus, price: listing.price },
+              { status: result.status, price: result.price ?? null }
+            )
+          ) {
+            try {
+              await prisma.stockEvent.create({
+                data: {
+                  productId: product.id,
+                  storeProductId: listing.id,
+                  storeName: listing.store.name,
+                  storeSlug,
+                  productName: product.name,
+                  status: result.status,
+                  price: result.price ?? listing.price ?? null,
+                  productUrl: result.productUrl ?? listing.url,
+                },
+              });
+            } catch (err: any) {
+              logger.warn('failed to write stock event', { ...ctx, error: err.message });
+            }
+          }
 
           // If just came into stock, notify trackers
           if (!wasInStock && isNowInStock) {

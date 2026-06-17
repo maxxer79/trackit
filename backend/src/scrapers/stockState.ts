@@ -23,3 +23,18 @@ export function isInStock(status: StockStatus): boolean {
 export function isUnknown(status: StockStatus): boolean {
   return status === 'UNKNOWN';
 }
+
+/**
+ * Whether a check result differs enough from the stored state to record a
+ * history point (StockEvent): the status changed, or a known new price differs
+ * from the stored price. A missing/undefined new price is not a change (the
+ * scraper just didn't report one this time).
+ */
+export function stockEventChanged(
+  prev: { status: string | null; price: number | null },
+  next: { status: string; price: number | null }
+): boolean {
+  const statusChanged = next.status !== prev.status;
+  const priceChanged = next.price != null && next.price !== prev.price;
+  return statusChanged || priceChanged;
+}
