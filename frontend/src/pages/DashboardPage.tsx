@@ -7,6 +7,7 @@ import { ProductCardSkeleton } from '../components/ui/Skeleton';
 import { StockStatus } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { downloadFile } from '../lib/download';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -38,9 +39,23 @@ export default function DashboardPage() {
           <h1 className="section-title">My Dashboard</h1>
           <p className="section-subtitle">{limitText}</p>
         </div>
-        <Link to="/browse" className="btn-primary px-5 py-2.5 text-subhead">
-          + Track More
-        </Link>
+        <div className="flex items-center gap-2">
+          {tracking && tracking.length > 0 && (
+            <button
+              onClick={() =>
+                downloadFile('/tracking/export', 'trackit-tracked-items.csv').catch(() =>
+                  toast.error('Export failed')
+                )
+              }
+              className="btn-secondary px-4 py-2.5 text-subhead"
+            >
+              Export CSV
+            </button>
+          )}
+          <Link to="/browse" className="btn-primary px-5 py-2.5 text-subhead">
+            + Track More
+          </Link>
+        </div>
       </div>
 
       {/* Stats bar */}

@@ -7,6 +7,7 @@ import { Alert, StockStatus } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
+import { downloadFile } from '../lib/download';
 
 export default function AlertsPage() {
   const qc = useQueryClient();
@@ -37,14 +38,28 @@ export default function AlertsPage() {
             {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
           </p>
         </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={() => markRead.mutate(undefined)}
-            className="btn-ghost text-subhead"
-          >
-            Mark all read
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {alerts && alerts.length > 0 && (
+            <button
+              onClick={() =>
+                downloadFile('/tracking/alerts/export', 'trackit-alerts.csv').catch(() =>
+                  toast.error('Export failed')
+                )
+              }
+              className="btn-secondary px-4 py-2 text-subhead"
+            >
+              Export CSV
+            </button>
+          )}
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markRead.mutate(undefined)}
+              className="btn-ghost text-subhead"
+            >
+              Mark all read
+            </button>
+          )}
+        </div>
       </div>
 
       {isLoading ? (

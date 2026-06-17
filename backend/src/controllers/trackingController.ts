@@ -2,6 +2,15 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
+import { toCsv } from '../utils/csv';
+
+// Prepend a UTF-8 BOM so Excel reads accents correctly, and set download headers.
+function sendCsv(res: Response, filenameBase: string, csv: string): void {
+  const date = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}-${date}.csv"`);
+  res.send('﻿' + csv);
+}
 
 export const getMyTrackings = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -88,6 +97,107 @@ export const removeTracking = async (req: AuthRequest, res: Response): Promise<v
   } catch (error) {
     logger.error('RemoveTracking error', error);
     res.status(500).json({ error: 'Failed to remove tracking' });
+  }
+};
+
+// GET /api/tracking/export — CSV of the user's tracked items (one row per store listing).
+export const exportTrackings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const trackings = await prisma.tracking.findMany({
+      where: { userId: req.user!.id, isActive: true },
+      include: {
+        product: { include: { storeListings: { include: { store: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Flatten to one row per (tracked product × store listing); products with no
+    // listings still get a single row so nothing silently disappears.
+    type Row = {
+      product: string;
+      category: string | null;
+      store: string;
+      status: string;
+      inStock: string;
+      price: number | null;
+      currency: string;
+      url: string;
+      lastChecked: Date | null;
+      trackingSince: Date;
+    };
+    const rows: Row[] = [];
+    for (const t of trackings) {
+      const listings = t.product.storeListings;
+      if (listings.length === 0) {
+        rows.push({
+          product: t.product.name, category: t.product.category, store: '', status: '',
+          inStock: '', price: null, currency: '', url: '', lastChecked: null, trackingSince: t.createdAt,
+        });
+        continue;
+      }
+      for (const l of listings) {
+        rows.push({
+          product: t.product.name,
+          category: t.product.category,
+          store: l.store.name,
+          status: l.stockStatus ?? '',
+          inStock: l.inStock ? 'yes' : 'no',
+          price: l.price,
+          currency: l.currency,
+          url: l.url,
+          lastChecked: l.lastChecked,
+          trackingSince: t.createdAt,
+        });
+      }
+    }
+
+    const csv = toCsv(rows, [
+      { header: 'Product', value: (r) => r.product },
+      { header: 'Category', value: (r) => r.category },
+      { header: 'Store', value: (r) => r.store },
+      { header: 'Status', value: (r) => r.status },
+      { header: 'In Stock', value: (r) => r.inStock },
+      { header: 'Price', value: (r) => r.price },
+      { header: 'Currency', value: (r) => r.currency },
+      { header: 'Product URL', value: (r) => r.url },
+      { header: 'Last Checked', value: (r) => r.lastChecked?.toISOString() ?? '' },
+      { header: 'Tracking Since', value: (r) => r.trackingSince.toISOString() },
+    ]);
+
+    sendCsv(res, 'trackit-tracked-items', csv);
+  } catch (error) {
+    logger.error('ExportTrackings error', error);
+    res.status(500).json({ error: 'Failed to export tracked items' });
+  }
+};
+
+// GET /api/tracking/alerts/export — CSV of the user's alert history.
+export const exportAlerts = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const alerts = await prisma.alert.findMany({
+      where: { userId: req.user!.id },
+      include: { storeProduct: { include: { product: true, store: true } } },
+      orderBy: { sentAt: 'desc' },
+      take: 5000,
+    });
+
+    const csv = toCsv(alerts, [
+      { header: 'Product', value: (a) => a.storeProduct?.product?.name ?? '' },
+      { header: 'Store', value: (a) => a.storeName ?? a.storeProduct?.store?.name ?? '' },
+      { header: 'Type', value: (a) => a.type },
+      { header: 'Status', value: (a) => a.status ?? '' },
+      { header: 'Price', value: (a) => a.price },
+      { header: 'Sent At', value: (a) => a.sentAt.toISOString() },
+      { header: 'Email Sent', value: (a) => (a.emailSent ? 'yes' : 'no') },
+      { header: 'SMS Sent', value: (a) => (a.smsSent ? 'yes' : 'no') },
+      { header: 'Push Sent', value: (a) => (a.pushSent ? 'yes' : 'no') },
+      { header: 'Discord Sent', value: (a) => (a.discordSent ? 'yes' : 'no') },
+    ]);
+
+    sendCsv(res, 'trackit-alerts', csv);
+  } catch (error) {
+    logger.error('ExportAlerts error', error);
+    res.status(500).json({ error: 'Failed to export alerts' });
   }
 };
 
