@@ -47,6 +47,85 @@ export const markRead = async (req: AuthRequest, res: Response): Promise<void> =
   }
 };
 
+/**
+ * GET /api/notifications/alerts — restock alert history for the Alerts page.
+ * Sourced from the Alert table (written by the worker on restock) and shaped to
+ * the frontend `Alert` type. Product name/slug/image are joined by productId
+ * (Alert has no product relation), and `sentAt` is exposed as `createdAt`.
+ */
+export const getAlerts = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const alerts = await prisma.alert.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { sentAt: 'desc' },
+      take: 200,
+    });
+
+    const productIds = [...new Set(alerts.map((a) => a.productId).filter((x): x is string => !!x))];
+    const products = productIds.length
+      ? await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true, slug: true, imageUrl: true },
+        })
+      : [];
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    const shaped = alerts.map((a) => {
+      const p = a.productId ? byId.get(a.productId) : undefined;
+      return {
+        id: a.id,
+        userId: a.userId,
+        productId: a.productId,
+        productSlug: p?.slug ?? '',
+        productName: p?.name ?? '(removed product)',
+        productImageUrl: p?.imageUrl ?? null,
+        storeName: a.storeName ?? '',
+        storeSlug: a.storeSlug ?? '',
+        productUrl: a.productUrl ?? '',
+        status: a.status ?? '',
+        price: a.price,
+        type: a.type,
+        isRead: a.isRead,
+        emailSent: a.emailSent,
+        smsSent: a.smsSent,
+        pushSent: a.pushSent,
+        discordSent: a.discordSent,
+        createdAt: a.sentAt,
+      };
+    });
+
+    res.json(shaped);
+  } catch (error) {
+    logger.error('GetAlerts error', error);
+    res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+};
+
+/**
+ * POST /api/notifications/alerts/read — mark alerts read. Body `{ alertIds }`
+ * marks those; an empty body marks all of the user's unread alerts.
+ */
+export const markAlertsRead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const raw = (req.body?.alertIds ?? undefined) as unknown;
+    const alertIds = Array.isArray(raw)
+      ? raw.filter((x): x is string => typeof x === 'string')
+      : undefined;
+
+    await prisma.alert.updateMany({
+      where: alertIds
+        ? { userId: req.user!.id, id: { in: alertIds } }
+        : { userId: req.user!.id, isRead: false },
+      data: { isRead: true },
+    });
+
+    res.json({ message: 'Alerts marked as read' });
+  } catch (error) {
+    logger.error('MarkAlertsRead error', error);
+    res.status(500).json({ error: 'Failed to mark alerts as read' });
+  }
+};
+
 export const savePushToken = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { endpoint, p256dh, auth, platform = 'web' } = req.body;

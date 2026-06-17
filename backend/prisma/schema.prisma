@@ -141,6 +141,7 @@ model Alert {
   smsSent        Boolean   @default(false)
   pushSent       Boolean   @default(false)
   discordSent    Boolean   @default(false)
+  isRead         Boolean   @default(false)
   sentAt         DateTime  @default(now())
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)

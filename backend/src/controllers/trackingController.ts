@@ -176,14 +176,21 @@ export const exportAlerts = async (req: AuthRequest, res: Response): Promise<voi
   try {
     const alerts = await prisma.alert.findMany({
       where: { userId: req.user!.id },
-      include: { storeProduct: { include: { product: true, store: true } } },
       orderBy: { sentAt: 'desc' },
       take: 5000,
     });
 
+    // Worker-created Alert rows don't set storeProductId, so join product names
+    // by productId (the field that IS populated) rather than via the relation.
+    const productIds = [...new Set(alerts.map((a) => a.productId).filter((x): x is string => !!x))];
+    const products = productIds.length
+      ? await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(products.map((p) => [p.id, p.name]));
+
     const csv = toCsv(alerts, [
-      { header: 'Product', value: (a) => a.storeProduct?.product?.name ?? '' },
-      { header: 'Store', value: (a) => a.storeName ?? a.storeProduct?.store?.name ?? '' },
+      { header: 'Product', value: (a) => (a.productId ? nameById.get(a.productId) ?? '' : '') },
+      { header: 'Store', value: (a) => a.storeName ?? '' },
       { header: 'Type', value: (a) => a.type },
       { header: 'Status', value: (a) => a.status ?? '' },
       { header: 'Price', value: (a) => a.price },
