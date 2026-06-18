@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getProducts, getProductBySlug, getCategories, getFeaturedProducts, getNewProducts, getStores, liveCheckProduct } from '../controllers/productController';
-import { getComments, createComment, deleteComment, getStockHistory } from '../controllers/commentController';
+import { getComments, createComment, deleteComment, getStockHistory, getRestockFrequency } from '../controllers/commentController';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { createCommentSchema } from '../schemas';
@@ -17,6 +17,7 @@ router.get('/:slug/comments', getComments);
 router.post('/:slug/comments', authenticate, validate(createCommentSchema), createComment);
 router.delete('/comments/:id', authenticate, requireAdmin, deleteComment);
 router.get('/:slug/stock-history', getStockHistory);
+router.get('/:slug/restock-frequency', getRestockFrequency);
 router.get('/:slug/live-check', liveCheckProduct);
 
 export default router;

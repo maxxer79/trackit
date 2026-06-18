@@ -36,6 +36,71 @@ function dowInTz(d: Date, tz: string): number {
 }
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
+// ── Per-product restock frequency ────────────────────────────────────────────
+// How often a single product comes back in stock. Source is StockEvent, which
+// fires on status OR price change — so consecutive in-stock rows can exist. We
+// collapse to true out→in transitions before measuring intervals.
+
+export interface StatusRow {
+  status: string;
+  createdAt: Date | string;
+}
+export interface RestockFrequency {
+  restockCount: number; // true out→in transitions observed
+  lastRestockAt: Date | null;
+  avgIntervalDays: number | null; // null until enough intervals to be honest
+  medianIntervalDays: number | null;
+  intervalsCount: number;
+}
+
+const IN_STOCK_STATUSES = new Set(['IN_STOCK', 'LIMITED', 'PREORDER']);
+const isInStock = (status: string): boolean => IN_STOCK_STATUSES.has(status);
+
+export function restockFrequency(
+  rows: StatusRow[],
+  opts: { minIntervals?: number } = {}
+): RestockFrequency {
+  const minIntervals = opts.minIntervals ?? 2; // ≥2 intervals ⇒ ≥3 restocks
+
+  const sorted = rows
+    .map((r) => ({ status: r.status, at: r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt) }))
+    .filter((r) => !Number.isNaN(r.at.getTime()))
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  const restockTimes: Date[] = [];
+  let prevInStock: boolean | null = null;
+  for (const r of sorted) {
+    const nowIn = isInStock(r.status);
+    // A restock is a transition into stock from a known out-of-stock state.
+    if (nowIn && prevInStock === false) restockTimes.push(r.at);
+    // UNKNOWN never flips the stock state (matches the scraper rule).
+    if (r.status !== 'UNKNOWN') prevInStock = nowIn;
+  }
+
+  const intervals: number[] = [];
+  for (let i = 1; i < restockTimes.length; i++) {
+    intervals.push((restockTimes[i].getTime() - restockTimes[i - 1].getTime()) / 86_400_000);
+  }
+
+  const round1 = (n: number): number => Math.round(n * 10) / 10;
+  const avg = intervals.length ? round1(intervals.reduce((s, n) => s + n, 0) / intervals.length) : null;
+  let median: number | null = null;
+  if (intervals.length) {
+    const s = [...intervals].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    median = round1(s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2);
+  }
+  const enough = intervals.length >= minIntervals;
+
+  return {
+    restockCount: restockTimes.length,
+    lastRestockAt: restockTimes.length ? restockTimes[restockTimes.length - 1] : null,
+    avgIntervalDays: enough ? avg : null,
+    medianIntervalDays: enough ? median : null,
+    intervalsCount: intervals.length,
+  };
+}
+
 export function summarizeRestocks(
   rows: RestockRow[],
   timezone: string,

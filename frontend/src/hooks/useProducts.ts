@@ -90,6 +90,26 @@ export function useTrackingAnalytics() {
   });
 }
 
+export interface RestockFrequency {
+  restockCount: number;
+  lastRestockAt: string | null;
+  avgIntervalDays: number | null;
+  medianIntervalDays: number | null;
+  intervalsCount: number;
+}
+
+export function useRestockFrequency(slug: string) {
+  return useQuery<RestockFrequency>({
+    queryKey: ['restock-frequency', slug],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${slug}/restock-frequency`);
+      return data;
+    },
+    enabled: !!slug,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useAddTracking() {
   const qc = useQueryClient();
   return useMutation({

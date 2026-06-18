@@ -1,5 +1,58 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeRestocks } from './analytics';
+import { summarizeRestocks, restockFrequency } from './analytics';
+
+const day = (n: number) => new Date(2026, 0, n).toISOString(); // Jan n, local
+
+describe('restockFrequency', () => {
+  it('returns empty for no events', () => {
+    const f = restockFrequency([]);
+    expect(f.restockCount).toBe(0);
+    expect(f.lastRestockAt).toBeNull();
+    expect(f.medianIntervalDays).toBeNull();
+    expect(f.intervalsCount).toBe(0);
+  });
+
+  it('counts only true out→in transitions, not price-change repeats', () => {
+    const rows = [
+      { status: 'OUT_OF_STOCK', createdAt: day(1) },
+      { status: 'IN_STOCK', createdAt: day(2) }, // restock #1
+      { status: 'IN_STOCK', createdAt: day(3) }, // price change while in stock — not a restock
+      { status: 'OUT_OF_STOCK', createdAt: day(5) },
+      { status: 'IN_STOCK', createdAt: day(12) }, // restock #2 (10d later)
+      { status: 'OUT_OF_STOCK', createdAt: day(13) },
+      { status: 'IN_STOCK', createdAt: day(22) }, // restock #3 (10d later)
+    ];
+    const f = restockFrequency(rows);
+    expect(f.restockCount).toBe(3);
+    expect(f.intervalsCount).toBe(2);
+    expect(f.medianIntervalDays).toBe(10);
+    expect(f.avgIntervalDays).toBe(10);
+  });
+
+  it('ignores UNKNOWN so it never fabricates a transition', () => {
+    const rows = [
+      { status: 'OUT_OF_STOCK', createdAt: day(1) },
+      { status: 'UNKNOWN', createdAt: day(2) },
+      { status: 'IN_STOCK', createdAt: day(3) }, // still a restock vs the OOS before UNKNOWN
+    ];
+    const f = restockFrequency(rows);
+    expect(f.restockCount).toBe(1);
+  });
+
+  it('withholds an interval estimate until there are enough intervals', () => {
+    const rows = [
+      { status: 'OUT_OF_STOCK', createdAt: day(1) },
+      { status: 'IN_STOCK', createdAt: day(2) },
+      { status: 'OUT_OF_STOCK', createdAt: day(3) },
+      { status: 'IN_STOCK', createdAt: day(8) }, // only 1 interval
+    ];
+    const f = restockFrequency(rows);
+    expect(f.restockCount).toBe(2);
+    expect(f.intervalsCount).toBe(1);
+    expect(f.medianIntervalDays).toBeNull(); // not enough yet
+    expect(f.lastRestockAt).not.toBeNull(); // but we still know the last restock
+  });
+});
 
 const NOW = new Date('2026-06-30T12:00:00Z');
 

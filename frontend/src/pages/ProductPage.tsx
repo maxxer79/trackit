@@ -11,6 +11,7 @@ import clsx from 'clsx';
 import api from '../lib/api';
 import StoreLogo from '../components/ui/StoreLogo';
 import PriceHistoryChart, { StockHistoryEvent } from '../components/products/PriceHistoryChart';
+import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge';
 
 const PRICE_OPTIONS = [
   { label: 'Any price', value: null },
@@ -406,6 +407,9 @@ export default function ProductPage() {
           Admin: go to <Link to="/admin/products" className="text-apple-blue hover:underline">Admin → Products</Link> to add store links for this product.
         </p>
       )}
+
+      {/* How often this product comes back in stock */}
+      <RestockFrequencyBadge slug={slug!} />
 
       {/* Price history chart (renders only when there are ≥2 priced points) */}
       <PriceHistoryChart events={stockHistory as StockHistoryEvent[]} />

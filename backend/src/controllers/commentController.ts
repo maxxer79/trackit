@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
+import { restockFrequency } from '../services/analytics';
 
 export const getComments = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -73,5 +74,29 @@ export const getStockHistory = async (req: Request, res: Response): Promise<void
   } catch (error) {
     logger.error('GetStockHistory error', error);
     res.status(500).json({ error: 'Failed to fetch stock history' });
+  }
+};
+
+// How often this product typically comes back in stock, from its global
+// StockEvent history (out→in transitions only). Public, like stock-history.
+export const getRestockFrequency = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    const product = await prisma.product.findUnique({ where: { slug }, select: { id: true } });
+    if (!product) { res.status(404).json({ error: 'Product not found' }); return; }
+
+    // Oldest→newest so transition detection reads in chronological order.
+    const events = await prisma.stockEvent.findMany({
+      where: { productId: product.id },
+      select: { status: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 1000,
+    });
+
+    const freq = restockFrequency(events);
+    res.json(freq);
+  } catch (error) {
+    logger.error('GetRestockFrequency error', error);
+    res.status(500).json({ error: 'Failed to compute restock frequency' });
   }
 };
