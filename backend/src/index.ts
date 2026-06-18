@@ -138,6 +138,8 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "timezone" TEXT');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "note" TEXT');
     await prisma.$executeRawUnsafe(`ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "tags" TEXT[] NOT NULL DEFAULT '{}'`);
+    await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertMaxPrice" DECIMAL');
+    await prisma.$executeRawUnsafe(`ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertDays" INTEGER[] NOT NULL DEFAULT '{}'`);
 
     // Performance indexes. Applied here rather than via `prisma migrate` (which
     // we don't run on boot); IF NOT EXISTS makes this safe to re-run every boot.

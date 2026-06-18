@@ -122,6 +122,8 @@ model Tracking {
   watchStores     String[]
   note            String?
   tags            String[]
+  alertMaxPrice   Decimal?
+  alertDays       Int[]
   autoBuyEnabled  Boolean  @default(false)
   autoBuyMaxPrice Decimal?
   createdAt       DateTime @default(now())

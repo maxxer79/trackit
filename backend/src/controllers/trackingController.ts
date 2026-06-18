@@ -188,7 +188,7 @@ export const importTracking = async (req: AuthRequest, res: Response): Promise<v
 export const updateTracking = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { productId } = req.params;
-    const { notifyEmail, notifyPush, watchStores, autoBuyEnabled, autoBuyMaxPrice, note, tags } = req.body;
+    const { notifyEmail, notifyPush, watchStores, autoBuyEnabled, autoBuyMaxPrice, note, tags, alertMaxPrice, alertDays } = req.body;
 
     const tracking = await prisma.tracking.findUnique({
       where: { userId_productId: { userId: req.user!.id, productId } },
@@ -207,6 +207,13 @@ export const updateTracking = async (req: AuthRequest, res: Response): Promise<v
     if (tags !== undefined) {
       data.tags = Array.isArray(tags)
         ? [...new Set(tags.map((t: unknown) => String(t).trim()).filter(Boolean))].slice(0, 20)
+        : [];
+    }
+    if (alertMaxPrice !== undefined) data.alertMaxPrice = alertMaxPrice;
+    // Dedupe + sort valid weekday indices (0..6).
+    if (alertDays !== undefined) {
+      data.alertDays = Array.isArray(alertDays)
+        ? [...new Set(alertDays.filter((d: unknown) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6))].sort()
         : [];
     }
 

@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { downloadFile } from '../lib/download';
 import InsightsPanel from '../components/dashboard/InsightsPanel';
 import ItemNotesTags from '../components/dashboard/ItemNotesTags';
+import ItemAlertRules from '../components/dashboard/ItemAlertRules';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -355,6 +356,9 @@ export default function DashboardPage() {
 
                     {/* Private notes & tags */}
                     <ItemNotesTags productId={item.product.id} note={item.note} tags={item.tags} />
+
+                    {/* Per-item advanced alert rules */}
+                    <ItemAlertRules productId={item.product.id} alertMaxPrice={item.alertMaxPrice} alertDays={item.alertDays} />
                   </div>
 
                   {/* Actions */}

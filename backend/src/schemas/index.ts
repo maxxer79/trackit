@@ -67,6 +67,8 @@ export const updateTrackingSchema = z
     autoBuyMaxPrice: z.number().nonnegative().nullish(),
     note: z.string().max(2000).nullish(),
     tags: z.array(z.string().max(40)).max(20).optional(),
+    alertMaxPrice: z.number().nonnegative().nullish(),
+    alertDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
 

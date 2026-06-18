@@ -222,6 +222,8 @@ export function useUpdateTracking() {
       autoBuyMaxPrice,
       note,
       tags,
+      alertMaxPrice,
+      alertDays,
     }: {
       productId: string;
       notifyEmail?: boolean;
@@ -231,6 +233,8 @@ export function useUpdateTracking() {
       autoBuyMaxPrice?: number | null;
       note?: string | null;
       tags?: string[];
+      alertMaxPrice?: number | null;
+      alertDays?: number[];
     }) => {
       const { data } = await api.patch(`/tracking/${productId}`, {
         notifyEmail,
@@ -240,6 +244,8 @@ export function useUpdateTracking() {
         autoBuyMaxPrice,
         note,
         tags,
+        alertMaxPrice,
+        alertDays,
       });
       return data;
     },

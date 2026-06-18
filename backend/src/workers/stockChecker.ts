@@ -4,6 +4,7 @@ import { getScraperForStore } from '../scrapers/index';
 import { isInStock, stockEventChanged } from '../scrapers/stockState';
 import { isPriceDrop } from '../services/priceDrop';
 import { sendNotifications } from '../services/notifications';
+import { passesAlertRules } from '../services/alertRules';
 import { ScraperError } from '../errors';
 import { evaluateStaleness } from './workerHealth';
 import logger from '../utils/logger';
@@ -231,6 +232,18 @@ stockCheckerQueue.process(
 
             // Send notifications to each tracker
             for (const tracker of trackers) {
+              // Per-item advanced alert rules (price ceiling + allowed days).
+              if (
+                !passesAlertRules(
+                  {
+                    alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
+                    alertDays: tracker.alertDays,
+                  },
+                  { price: result.price ?? null, timezone: tracker.user.timezone }
+                )
+              ) {
+                continue;
+              }
               await sendNotifications({
                 user: {
                   ...tracker.user,
@@ -298,6 +311,17 @@ stockCheckerQueue.process(
               });
 
               for (const tracker of dropTrackers) {
+                if (
+                  !passesAlertRules(
+                    {
+                      alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
+                      alertDays: tracker.alertDays,
+                    },
+                    { price: result.price ?? null, timezone: tracker.user.timezone }
+                  )
+                ) {
+                  continue;
+                }
                 await sendNotifications({
                   user: {
                     ...tracker.user,
