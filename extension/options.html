@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Trackit Extension Setup</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <h1>Trackit Extension Setup</h1>
+    <p class="sub">Connect to your self-hosted Trackit instance. Your password is used once to sign in and is never stored — only the resulting access token is kept locally.</p>
+
+    <!-- Connected state -->
+    <div id="connected" hidden>
+      <div class="msg ok" id="connectedMsg"></div>
+      <button class="secondary" id="disconnect">Disconnect</button>
+    </div>
+
+    <!-- Login form -->
+    <div id="form">
+      <label for="baseUrl">Trackit URL</label>
+      <input id="baseUrl" type="url" placeholder="https://trackit.yourdomain.com" />
+
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="you@example.com" />
+
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="••••••••" />
+
+      <button id="connect">Connect</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
