@@ -12,6 +12,7 @@ import api from '../lib/api';
 import StoreLogo from '../components/ui/StoreLogo';
 import PriceHistoryChart, { StockHistoryEvent } from '../components/products/PriceHistoryChart';
 import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge';
+import SimilarItems from '../components/products/SimilarItems';
 
 const PRICE_OPTIONS = [
   { label: 'Any price', value: null },
@@ -454,6 +455,9 @@ export default function ProductPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Similar items — co-tracked, with category fallback */}
+      <SimilarItems slug={slug!} />
 
       {/* Comments */}
       <div>

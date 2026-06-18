@@ -3,6 +3,30 @@ import { prisma } from '../config/database';
 import logger from '../utils/logger';
 import { STORE_SEARCH_URLS } from '../data/searchUrls';
 import { getScraperForStore } from '../scrapers/index';
+import { rankSimilar, CoTrackRow } from '../services/similar';
+
+// Map a Prisma product (with storeListings + _count) to the card shape the
+// frontend ProductCard expects (stockStatuses/bestStatus/lowestPrice).
+function toCardShape(p: any) {
+  return {
+    ...p,
+    trackingCount: p._count?.trackings ?? 0,
+    stockStatuses: p.storeListings?.map((sl: any) => ({
+      storeId: sl.storeId,
+      storeProductId: sl.id,
+      storeName: sl.store?.name,
+      storeSlug: sl.store?.slug,
+      storeLogo: sl.store?.logoUrl,
+      status: sl.stockStatus ?? (sl.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK'),
+      price: sl.price,
+      productUrl: sl.url,
+      lastCheckedAt: sl.lastChecked,
+      storeSearchUrl: sl.store?.searchUrl ?? STORE_SEARCH_URLS[sl.store?.slug] ?? null,
+    })) ?? [],
+    bestStatus: p.storeListings?.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',
+    lowestPrice: p.storeListings?.filter((sl: any) => sl.inStock && sl.price).map((sl: any) => sl.price).sort((a: number, b: number) => a - b)[0] ?? null,
+  };
+}
 
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -154,6 +178,75 @@ export const getNewProducts = async (_req: Request, res: Response): Promise<void
     res.json(products);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch new products' });
+  }
+};
+
+// "Similar items" for a product page: products co-tracked by the same users
+// (collaborative signal), with same-category products filling any gaps.
+export const getSimilarProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    const limit = 6;
+
+    const product = await prisma.product.findUnique({
+      where: { slug },
+      select: { id: true, category: true },
+    });
+    if (!product) { res.status(404).json({ error: 'Product not found' }); return; }
+
+    // Who tracks this product → what else do they track (co-tracking signal).
+    const trackers = await prisma.tracking.findMany({
+      where: { productId: product.id, isActive: true },
+      select: { userId: true },
+    });
+    const userIds = trackers.map((t) => t.userId);
+
+    let coTracked: CoTrackRow[] = [];
+    if (userIds.length > 0) {
+      const grouped = await prisma.tracking.groupBy({
+        by: ['productId'],
+        where: { userId: { in: userIds }, isActive: true, productId: { not: product.id } },
+        _count: { productId: true },
+      });
+      coTracked = grouped.map((g) => ({ productId: g.productId, count: g._count.productId }));
+    }
+
+    // Same-category candidates, most-viewed first, to fill any remaining slots.
+    const categoryCandidates = product.category
+      ? await prisma.product.findMany({
+          where: { category: product.category, id: { not: product.id }, isActive: true },
+          select: { id: true },
+          orderBy: { viewCount: 'desc' },
+          take: limit * 3,
+        })
+      : [];
+
+    const picks = rankSimilar(coTracked, categoryCandidates.map((c) => c.id), product.id, limit);
+    if (picks.length === 0) { res.json([]); return; }
+
+    // Hydrate to card shape (same as featured/new), then re-order to match picks
+    // and only surface active products.
+    const products = await prisma.product.findMany({
+      where: { id: { in: picks.map((p) => p.productId) }, isActive: true },
+      include: {
+        storeListings: { include: { store: true }, take: 5, orderBy: { price: 'asc' } },
+        _count: { select: { trackings: { where: { isActive: true } } } },
+      },
+    });
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    const result = picks
+      .map((pick) => {
+        const p = byId.get(pick.productId);
+        if (!p) return null;
+        return { ...toCardShape(p), similarSource: pick.source, coTrackCount: pick.coCount ?? null };
+      })
+      .filter(Boolean);
+
+    res.json(result);
+  } catch (error) {
+    logger.error('GetSimilarProducts error', error);
+    res.status(500).json({ error: 'Failed to fetch similar products' });
   }
 };
 

@@ -98,6 +98,18 @@ export interface RestockFrequency {
   intervalsCount: number;
 }
 
+export function useSimilarProducts(slug: string) {
+  return useQuery<(Product & { similarSource?: 'co-tracked' | 'category'; coTrackCount?: number | null })[]>({
+    queryKey: ['similar-products', slug],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${slug}/similar`);
+      return data;
+    },
+    enabled: !!slug,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useRestockFrequency(slug: string) {
   return useQuery<RestockFrequency>({
     queryKey: ['restock-frequency', slug],
