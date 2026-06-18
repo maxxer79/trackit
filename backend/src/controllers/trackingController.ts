@@ -1,8 +1,14 @@
 import { Request, Response } from 'express';
+import axios from 'axios';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
 import { toCsv } from '../utils/csv';
+import { detectStore, extractMetadata, slugify, nameFromUrl } from '../services/importUrl';
+
+const IMPORT_UA =
+  process.env.SCRAPER_USER_AGENT ||
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 // Prepend a UTF-8 BOM so Excel reads accents correctly, and set download headers.
 function sendCsv(res: Response, filenameBase: string, csv: string): void {
@@ -97,6 +103,83 @@ export const removeTracking = async (req: AuthRequest, res: Response): Promise<v
   } catch (error) {
     logger.error('RemoveTracking error', error);
     res.status(500).json({ error: 'Failed to remove tracking' });
+  }
+};
+
+// POST /api/tracking/import — paste a product URL: auto-detect the retailer,
+// scrape page metadata for name/image, create the product + listing if new, and
+// start tracking it. Stock/price fill in on the next scheduled check.
+export const importTracking = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { url } = req.body;
+    const user = req.user!;
+
+    const stores = await prisma.store.findMany({
+      where: { isActive: true },
+      select: { id: true, slug: true, name: true, domain: true },
+    });
+    const store = detectStore(url, stores);
+    if (!store) {
+      res.status(422).json({ error: "We don't support that retailer yet — paste a link from a supported store." });
+      return;
+    }
+
+    // Reuse an existing listing for this exact URL so we don't duplicate products.
+    let listing = await prisma.storeProduct.findFirst({ where: { url }, include: { product: true } });
+    let product = listing?.product ?? null;
+
+    if (!product) {
+      let meta: { name?: string; image?: string } = {};
+      try {
+        const resp = await axios.get(url, { timeout: 10000, maxRedirects: 5, headers: { 'User-Agent': IMPORT_UA } });
+        meta = extractMetadata(String(resp.data));
+      } catch (e: any) {
+        logger.info('import: metadata fetch failed, using URL-derived name', { url, error: e.message });
+      }
+
+      const name = (meta.name || nameFromUrl(url)).slice(0, 200);
+      const base = slugify(name);
+      const clash = await prisma.product.findUnique({ where: { slug: base } });
+      const slug = clash ? `${base}-${Math.random().toString(36).slice(2, 6)}` : base;
+
+      product = await prisma.product.create({
+        data: { name, slug, imageUrl: meta.image ?? null, isNew: true },
+      });
+      listing = await prisma.storeProduct.create({
+        data: { productId: product.id, storeId: store.id, url },
+        include: { product: true },
+      });
+    }
+
+    // Tracking limit + create/reactivate this user's tracking.
+    const existing = await prisma.tracking.findUnique({
+      where: { userId_productId: { userId: user.id, productId: product.id } },
+    });
+    if (existing?.isActive) {
+      res.status(409).json({ error: 'You are already tracking this product.', product });
+      return;
+    }
+    if (!existing && user.trackingLimit !== -1) {
+      const count = await prisma.tracking.count({ where: { userId: user.id, isActive: true } });
+      if (count >= user.trackingLimit) {
+        res.status(403).json({ error: `Tracking limit reached (${user.trackingLimit}).`, limitReached: true });
+        return;
+      }
+    }
+
+    const tracking = existing
+      ? await prisma.tracking.update({ where: { id: existing.id }, data: { isActive: true } })
+      : await prisma.tracking.create({ data: { userId: user.id, productId: product.id } });
+
+    res.status(201).json({
+      product,
+      tracking,
+      store: { slug: store.slug, name: store.name },
+      message: 'Tracking started — stock and price will update on the next check.',
+    });
+  } catch (error) {
+    logger.error('ImportTracking error', error);
+    res.status(500).json({ error: 'Failed to import product' });
   }
 };
 

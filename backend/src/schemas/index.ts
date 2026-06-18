@@ -52,6 +52,11 @@ export const addTrackingSchema = z.object({
   watchStores: z.array(z.string()).optional(),
 });
 
+// POST /api/tracking/import — paste-URL self-import.
+export const importTrackingSchema = z.object({
+  url: z.string().url('Enter a valid product URL'),
+});
+
 // PATCH /api/tracking/:productId — per-item notification preferences.
 export const updateTrackingSchema = z
   .object({

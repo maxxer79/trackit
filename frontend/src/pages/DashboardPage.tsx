@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useTracking, useRemoveTracking, useUpdateTracking } from '../hooks/useProducts';
+import { useTracking, useRemoveTracking, useUpdateTracking, useImportTracking } from '../hooks/useProducts';
 import { useAuthStore } from '../store/auth';
 import StatusBadge from '../components/ui/StatusBadge';
 import { ProductCardSkeleton } from '../components/ui/Skeleton';
@@ -14,6 +15,22 @@ export default function DashboardPage() {
   const { data: tracking, isLoading } = useTracking();
   const removeTracking = useRemoveTracking();
   const updateTracking = useUpdateTracking();
+  const importTracking = useImportTracking();
+  const [importUrl, setImportUrl] = useState('');
+
+  const handleImport = (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = importUrl.trim();
+    if (!url) return;
+    importTracking.mutate(url, {
+      onSuccess: (data) => {
+        toast.success(data?.message || 'Tracking started');
+        setImportUrl('');
+      },
+      onError: (err: any) =>
+        toast.error(err?.response?.data?.error || 'Could not import that URL'),
+    });
+  };
 
   const handleRemove = async (productId: string, productName: string) => {
     try {
@@ -58,6 +75,25 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Add by URL — paste a product link to track it */}
+      <form onSubmit={handleImport} className="card p-4 mb-6 flex items-center gap-3 flex-wrap">
+        <span className="text-lg" aria-hidden="true">🔗</span>
+        <input
+          type="url"
+          value={importUrl}
+          onChange={(e) => setImportUrl(e.target.value)}
+          placeholder="Paste a product URL from a supported store…"
+          className="input flex-1 min-w-[220px] text-sm"
+        />
+        <button
+          type="submit"
+          disabled={importTracking.isPending || !importUrl.trim()}
+          className="btn-primary px-5 py-2.5 text-subhead disabled:opacity-40"
+        >
+          {importTracking.isPending ? 'Adding…' : 'Track URL'}
+        </button>
+      </form>
 
       {/* Stats bar */}
       {tracking && tracking.length > 0 && (

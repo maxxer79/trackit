@@ -95,6 +95,20 @@ export function useRemoveTracking() {
   });
 }
 
+export function useImportTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (url: string) => {
+      const { data } = await api.post('/tracking/import', { url });
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tracking'] });
+      qc.invalidateQueries({ queryKey: ['auth-me'] });
+    },
+  });
+}
+
 export function useUpdateTracking() {
   const qc = useQueryClient();
   return useMutation({
