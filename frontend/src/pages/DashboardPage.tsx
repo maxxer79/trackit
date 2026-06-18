@@ -10,6 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { downloadFile } from '../lib/download';
 import InsightsPanel from '../components/dashboard/InsightsPanel';
+import ItemNotesTags from '../components/dashboard/ItemNotesTags';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -18,6 +19,7 @@ export default function DashboardPage() {
   const updateTracking = useUpdateTracking();
   const importTracking = useImportTracking();
   const [importUrl, setImportUrl] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   const handleImport = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +50,11 @@ export default function DashboardPage() {
 
   const inStockItems = tracking?.filter((t) =>
     t.stockStatuses?.some((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED')
+  );
+
+  const allTags = [...new Set((tracking ?? []).flatMap((t: any) => t.tags ?? []))].sort() as string[];
+  const visibleTracking = tracking?.filter(
+    (t: any) => !tagFilter || (t.tags ?? []).includes(tagFilter)
   );
 
   return (
@@ -127,6 +134,32 @@ export default function DashboardPage() {
       {/* Personal restock insights */}
       <InsightsPanel />
 
+      {/* Tag filter */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <span className="text-caption2 text-dark-label3">Tags:</span>
+          <button
+            onClick={() => setTagFilter(null)}
+            className={`text-caption2 px-2.5 py-1 rounded-pill border transition-colors ${
+              !tagFilter ? 'border-apple-blue text-apple-blue bg-apple-blue/10' : 'border-dark-separator text-dark-label2 hover:text-dark-label1'
+            }`}
+          >
+            All
+          </button>
+          {allTags.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTagFilter(t === tagFilter ? null : t)}
+              className={`text-caption2 px-2.5 py-1 rounded-pill border transition-colors ${
+                t === tagFilter ? 'border-apple-blue text-apple-blue bg-apple-blue/10' : 'border-dark-separator text-dark-label2 hover:text-dark-label1'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tracking list */}
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -143,7 +176,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {tracking.map((item, i) => {
+          {(visibleTracking ?? []).map((item, i) => {
             const bestStatus: StockStatus = item.stockStatuses?.find((s: any) => s.status === 'IN_STOCK')?.status
               ?? item.stockStatuses?.find((s: any) => s.status === 'LIMITED')?.status
               ?? item.stockStatuses?.find((s: any) => s.status === 'OUT_OF_STOCK')?.status
@@ -222,6 +255,9 @@ export default function DashboardPage() {
                         )}
                       </div>
                     )}
+
+                    {/* Private notes & tags */}
+                    <ItemNotesTags productId={item.product.id} note={item.note} tags={item.tags} />
                   </div>
 
                   {/* Actions */}

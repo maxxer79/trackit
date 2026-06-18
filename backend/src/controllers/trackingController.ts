@@ -188,7 +188,7 @@ export const importTracking = async (req: AuthRequest, res: Response): Promise<v
 export const updateTracking = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { productId } = req.params;
-    const { notifyEmail, notifyPush, watchStores, autoBuyEnabled, autoBuyMaxPrice } = req.body;
+    const { notifyEmail, notifyPush, watchStores, autoBuyEnabled, autoBuyMaxPrice, note, tags } = req.body;
 
     const tracking = await prisma.tracking.findUnique({
       where: { userId_productId: { userId: req.user!.id, productId } },
@@ -201,6 +201,14 @@ export const updateTracking = async (req: AuthRequest, res: Response): Promise<v
     if (watchStores !== undefined) data.watchStores = watchStores;
     if (autoBuyEnabled !== undefined) data.autoBuyEnabled = !!autoBuyEnabled;
     if (autoBuyMaxPrice !== undefined) data.autoBuyMaxPrice = autoBuyMaxPrice;
+    // Trim/normalize a private note; empty string clears it.
+    if (note !== undefined) data.note = typeof note === 'string' && note.trim() ? note.trim() : null;
+    // Dedupe, trim, drop empties, cap length.
+    if (tags !== undefined) {
+      data.tags = Array.isArray(tags)
+        ? [...new Set(tags.map((t: unknown) => String(t).trim()).filter(Boolean))].slice(0, 20)
+        : [];
+    }
 
     const updated = await prisma.tracking.update({ where: { id: tracking.id }, data });
     res.json(updated);

@@ -179,6 +179,8 @@ export function useUpdateTracking() {
       watchStores,
       autoBuyEnabled,
       autoBuyMaxPrice,
+      note,
+      tags,
     }: {
       productId: string;
       notifyEmail?: boolean;
@@ -186,6 +188,8 @@ export function useUpdateTracking() {
       watchStores?: string[];
       autoBuyEnabled?: boolean;
       autoBuyMaxPrice?: number | null;
+      note?: string | null;
+      tags?: string[];
     }) => {
       const { data } = await api.patch(`/tracking/${productId}`, {
         notifyEmail,
@@ -193,6 +197,8 @@ export function useUpdateTracking() {
         watchStores,
         autoBuyEnabled,
         autoBuyMaxPrice,
+        note,
+        tags,
       });
       return data;
     },

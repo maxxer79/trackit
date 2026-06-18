@@ -120,6 +120,8 @@ model Tracking {
   notifyEmail     Boolean  @default(true)
   notifyPush      Boolean  @default(true)
   watchStores     String[]
+  note            String?
+  tags            String[]
   autoBuyEnabled  Boolean  @default(false)
   autoBuyMaxPrice Decimal?
   createdAt       DateTime @default(now())

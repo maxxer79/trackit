@@ -65,6 +65,8 @@ export const updateTrackingSchema = z
     watchStores: z.array(z.string()).optional(),
     autoBuyEnabled: z.boolean().optional(),
     autoBuyMaxPrice: z.number().nonnegative().nullish(),
+    note: z.string().max(2000).nullish(),
+    tags: z.array(z.string().max(40)).max(20).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
 
