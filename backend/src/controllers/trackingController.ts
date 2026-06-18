@@ -218,6 +218,44 @@ export const updateTracking = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+// POST /api/tracking/bulk — apply one change (or removal) to many tracked items
+// at once. Always scoped to the caller's own trackings via userId in the where.
+export const bulkTracking = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { productIds, op, changes } = req.body as {
+      productIds: string[];
+      op: 'update' | 'remove';
+      changes?: Record<string, unknown>;
+    };
+
+    const where = { userId, productId: { in: productIds } };
+
+    if (op === 'remove') {
+      const result = await prisma.tracking.updateMany({ where, data: { isActive: false } });
+      res.json({ affected: result.count });
+      return;
+    }
+
+    const data: Record<string, unknown> = {};
+    if (changes?.notifyEmail !== undefined) data.notifyEmail = !!changes.notifyEmail;
+    if (changes?.notifyPush !== undefined) data.notifyPush = !!changes.notifyPush;
+    if (changes?.autoBuyEnabled !== undefined) data.autoBuyEnabled = !!changes.autoBuyEnabled;
+    if (changes?.autoBuyMaxPrice !== undefined) data.autoBuyMaxPrice = changes.autoBuyMaxPrice;
+
+    if (Object.keys(data).length === 0) {
+      res.status(400).json({ error: 'No changes provided for update' });
+      return;
+    }
+
+    const result = await prisma.tracking.updateMany({ where, data });
+    res.json({ affected: result.count });
+  } catch (error) {
+    logger.error('BulkTracking error', error);
+    res.status(500).json({ error: 'Failed to apply bulk action' });
+  }
+};
+
 // GET /api/tracking/export — CSV of the user's tracked items (one row per store listing).
 export const exportTrackings = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

@@ -155,6 +155,29 @@ export function useRemoveTracking() {
   });
 }
 
+export interface BulkChanges {
+  notifyEmail?: boolean;
+  notifyPush?: boolean;
+  autoBuyEnabled?: boolean;
+  autoBuyMaxPrice?: number | null;
+}
+
+export function useBulkTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { productIds: string[]; op: 'update' | 'remove'; changes?: BulkChanges }) => {
+      const { data } = await api.post('/tracking/bulk', body);
+      return data as { affected: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tracking'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product'] });
+      qc.invalidateQueries({ queryKey: ['auth-me'] });
+    },
+  });
+}
+
 export function useImportTracking() {
   const qc = useQueryClient();
   return useMutation({

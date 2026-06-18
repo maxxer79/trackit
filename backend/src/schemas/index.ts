@@ -70,6 +70,23 @@ export const updateTrackingSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
 
+export const bulkTrackingSchema = z
+  .object({
+    productIds: z.array(z.string()).min(1).max(500),
+    op: z.enum(['update', 'remove']),
+    changes: z
+      .object({
+        notifyEmail: z.boolean().optional(),
+        notifyPush: z.boolean().optional(),
+        autoBuyEnabled: z.boolean().optional(),
+        autoBuyMaxPrice: z.number().nonnegative().nullish(),
+      })
+      .optional(),
+  })
+  .refine((d) => d.op === 'remove' || (d.changes && Object.keys(d.changes).length > 0), {
+    message: 'No changes provided for update',
+  });
+
 // ── Comments ──────────────────────────────────────────────────────────────────
 
 export const createCommentSchema = z.object({

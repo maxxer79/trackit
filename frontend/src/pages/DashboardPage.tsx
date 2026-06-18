@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useTracking, useRemoveTracking, useUpdateTracking, useImportTracking } from '../hooks/useProducts';
+import { useTracking, useRemoveTracking, useUpdateTracking, useImportTracking, useBulkTracking } from '../hooks/useProducts';
 import { useAuthStore } from '../store/auth';
 import StatusBadge from '../components/ui/StatusBadge';
 import { ProductCardSkeleton } from '../components/ui/Skeleton';
@@ -18,8 +18,17 @@ export default function DashboardPage() {
   const removeTracking = useRemoveTracking();
   const updateTracking = useUpdateTracking();
   const importTracking = useImportTracking();
+  const bulk = useBulkTracking();
   const [importUrl, setImportUrl] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const handleImport = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +51,42 @@ export default function DashboardPage() {
     } catch {
       toast.error('Failed to remove tracking');
     }
+  };
+
+  const runBulk = (
+    op: 'update' | 'remove',
+    changes: Record<string, unknown> | undefined,
+    label: string
+  ) => {
+    const productIds = [...selected];
+    if (productIds.length === 0) return;
+    bulk.mutate(
+      { productIds, op, changes } as any,
+      {
+        onSuccess: (r: { affected: number }) => {
+          toast.success(`${label} — ${r.affected} item${r.affected === 1 ? '' : 's'}`);
+          setSelected(new Set());
+        },
+        onError: () => toast.error('Bulk action failed'),
+      }
+    );
+  };
+
+  const bulkSetMaxPrice = () => {
+    const v = window.prompt('Set max auto-buy price for selected items (leave blank to clear):');
+    if (v === null) return;
+    const trimmed = v.trim();
+    const num = trimmed === '' ? null : Number(trimmed);
+    if (num !== null && (Number.isNaN(num) || num < 0)) {
+      toast.error('Enter a valid non-negative number');
+      return;
+    }
+    runBulk('update', { autoBuyMaxPrice: num }, 'Max price updated');
+  };
+
+  const bulkStop = () => {
+    if (!window.confirm(`Stop tracking ${selected.size} item${selected.size === 1 ? '' : 's'}?`)) return;
+    runBulk('remove', undefined, 'Stopped tracking');
   };
 
   const limitText = user?.trackingLimit === -1
@@ -160,6 +205,48 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="sticky top-2 z-10 card p-3 mb-4 flex flex-wrap items-center gap-2 border-apple-blue/40 bg-dark-surface2/95 backdrop-blur">
+          <span className="text-subhead font-semibold text-dark-label1">{selected.size} selected</span>
+          <button
+            onClick={() => setSelected(new Set((visibleTracking ?? []).map((t: any) => t.product.id)))}
+            className="text-caption1 text-apple-blue hover:underline ml-1"
+          >
+            Select all
+          </button>
+          <div className="flex-1" />
+          {[
+            { label: '📧 On', op: 'update' as const, changes: { notifyEmail: true }, done: 'Email on' },
+            { label: '📧 Off', op: 'update' as const, changes: { notifyEmail: false }, done: 'Email off' },
+            { label: '🔔 On', op: 'update' as const, changes: { notifyPush: true }, done: 'Push on' },
+            { label: '🔔 Off', op: 'update' as const, changes: { notifyPush: false }, done: 'Push off' },
+          ].map((a) => (
+            <button
+              key={a.label}
+              disabled={bulk.isPending}
+              onClick={() => runBulk(a.op, a.changes, a.done)}
+              className="btn-secondary px-3 py-1.5 text-caption1 disabled:opacity-40"
+            >
+              {a.label}
+            </button>
+          ))}
+          <button disabled={bulk.isPending} onClick={bulkSetMaxPrice} className="btn-secondary px-3 py-1.5 text-caption1 disabled:opacity-40">
+            Set max $
+          </button>
+          <button
+            disabled={bulk.isPending}
+            onClick={bulkStop}
+            className="px-3 py-1.5 text-caption1 rounded-apple text-apple-red border border-apple-red/30 hover:bg-apple-red/10 disabled:opacity-40"
+          >
+            Stop tracking
+          </button>
+          <button onClick={() => setSelected(new Set())} className="px-3 py-1.5 text-caption1 text-dark-label2 hover:text-dark-label1">
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Tracking list */}
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -200,6 +287,16 @@ export default function DashboardPage() {
                 transition={{ delay: i * 0.06 }}
               >
                 <div className="flex items-center gap-4 p-4">
+                  {/* Bulk select */}
+                  <input
+                    type="checkbox"
+                    checked={selected.has(item.product.id)}
+                    onChange={() => toggleSelect(item.product.id)}
+                    className="w-4 h-4 accent-apple-blue shrink-0 cursor-pointer"
+                    title="Select for bulk actions"
+                    aria-label={`Select ${item.product.name}`}
+                  />
+
                   {/* Image */}
                   <Link to={`/product/${item.product.slug}`} className="shrink-0">
                     <div className="w-16 h-16 rounded-apple bg-dark-surface2 overflow-hidden flex items-center justify-center">
