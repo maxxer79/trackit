@@ -5,6 +5,7 @@ import logger from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
 import { toCsv } from '../utils/csv';
 import { detectStore, extractMetadata, slugify, nameFromUrl } from '../services/importUrl';
+import { summarizeRestocks } from '../services/analytics';
 
 const IMPORT_UA =
   process.env.SCRAPER_USER_AGENT ||
@@ -341,5 +342,39 @@ export const getAlertHistory = async (req: AuthRequest, res: Response): Promise<
   } catch (error) {
     logger.error('GetAlertHistory error', error);
     res.status(500).json({ error: 'Failed to fetch alert history' });
+  }
+};
+
+// Personal restock analytics: how often the user's tracked items come back in
+// stock, when (in their local time), and from which retailers. Sourced from the
+// Alert table (type IN_STOCK = a true out→in transition), already per-user.
+const ANALYTICS_WINDOW_DAYS = 90;
+
+export const getTrackingAnalytics = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const since = new Date(Date.now() - ANALYTICS_WINDOW_DAYS * 86_400_000);
+
+    const [user, trackedCount, alerts] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
+      prisma.tracking.count({ where: { userId, isActive: true } }),
+      prisma.alert.findMany({
+        where: { userId, type: 'IN_STOCK', sentAt: { gte: since } },
+        select: { sentAt: true, storeSlug: true },
+        orderBy: { sentAt: 'asc' },
+        take: 5000,
+      }),
+    ]);
+
+    const timezone = user?.timezone || 'UTC';
+    const summary = summarizeRestocks(
+      alerts.map((a) => ({ createdAt: a.sentAt, storeSlug: a.storeSlug || 'unknown' })),
+      timezone
+    );
+
+    res.json({ trackedCount, windowDays: ANALYTICS_WINDOW_DAYS, timezone, summary });
+  } catch (error) {
+    logger.error('GetTrackingAnalytics error', error);
+    res.status(500).json({ error: 'Failed to compute analytics' });
   }
 };

@@ -9,6 +9,7 @@ import { StockStatus } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { downloadFile } from '../lib/download';
+import InsightsPanel from '../components/dashboard/InsightsPanel';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -122,6 +123,9 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      {/* Personal restock insights */}
+      <InsightsPanel />
 
       {/* Tracking list */}
       {isLoading ? (

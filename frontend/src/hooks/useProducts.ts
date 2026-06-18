@@ -62,6 +62,34 @@ export function useTracking() {
   });
 }
 
+export interface RestockAnalytics {
+  trackedCount: number;
+  windowDays: number;
+  timezone: string;
+  summary: {
+    total: number;
+    spanDays: number;
+    restocksPerMonth: number | null;
+    peakHour: number | null;
+    byHour: number[];
+    byDayOfWeek: number[];
+    topRetailers: { storeSlug: string; count: number }[];
+    firstAt: string | null;
+    lastAt: string | null;
+  };
+}
+
+export function useTrackingAnalytics() {
+  return useQuery<RestockAnalytics>({
+    queryKey: ['tracking-analytics'],
+    queryFn: async () => {
+      const { data } = await api.get('/tracking/analytics');
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useAddTracking() {
   const qc = useQueryClient();
   return useMutation({
