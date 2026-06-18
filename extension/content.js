@@ -1,16 +1,69 @@
 /* global chrome */
-// Injects a floating "Track this item" button on supported retailer pages.
-// Runs only in the top frame, only when the extension is configured, and only
-// if the user hasn't turned the button off. Uses a Shadow DOM so the host
-// page's CSS can't affect it. The fetch goes straight to the user's instance;
-// Trackit's CORS reflects the origin, so the page-origin request is allowed.
+// Injects a floating "Track this item" button on supported retailer PRODUCT
+// pages. Runs only in the top frame, only when configured, and only if the user
+// hasn't turned it off. Uses a Shadow DOM so the host page's CSS can't affect
+// it. The fetch goes straight to the user's instance; Trackit's CORS reflects
+// the origin, so the page-origin request is allowed.
+
+// Per-host product-URL markers. If a host isn't listed, we don't second-guess
+// and show the button (better than hiding it on a real product page).
+const HOST_PATTERNS = {
+  'amazon.com': [/\/dp\//, /\/gp\/product\//],
+  'bestbuy.com': [/\/site\/.+\/\d+\.p/, /\.p(\?|$)/],
+  'walmart.com': [/\/ip\//],
+  'target.com': [/\/p\//, /\/-\/A-/],
+  'costco.com': [/\.product\./],
+  'gamestop.com': [/\/products?\//],
+  'newegg.com': [/\/p\//],
+  'bhphotovideo.com': [/\/c\/product\//],
+  'microcenter.com': [/\/product\//],
+  'ebay.com': [/\/itm\//],
+  'nintendo.com': [/\/store\/products\//],
+  'lenovo.com': [/\/p\//],
+  'homedepot.com': [/\/p\//],
+  'lego.com': [/\/product\//],
+  'samsclub.com': [/\/p\//],
+  'toysrus.com': [/\/product/],
+  'kohls.com': [/\/product\//],
+  'officedepot.com': [/\/products?\//, /\/a\/products\//],
+  'meijer.com': [/\/shopping\/product\//],
+  'popmart.com': [/\/products\//],
+};
+
+function looksLikeProduct(href) {
+  let u;
+  try { u = new URL(href); } catch { return false; }
+  const host = u.hostname.replace(/^www\./, '');
+  const path = u.pathname + u.search;
+  const key = Object.keys(HOST_PATTERNS).find((h) => host === h || host.endsWith('.' + h));
+  if (!key) return true; // unmapped host — show rather than risk a false hide
+  return HOST_PATTERNS[key].some((re) => re.test(path));
+}
+
+const dismissed = new Set();
 
 if (window.top === window) {
   chrome.storage.local.get(['baseUrl', 'token', 'floatingButton'], (cfg) => {
-    const enabled = cfg.floatingButton !== false; // default on
-    if (!cfg.baseUrl || !cfg.token || !enabled) return;
-    if (document.getElementById('trackit-fab-host')) return;
-    mount(cfg.baseUrl, cfg.token);
+    if (!cfg.baseUrl || !cfg.token || cfg.floatingButton === false) return;
+
+    const sync = () => {
+      const present = document.getElementById('trackit-fab-host');
+      const show = looksLikeProduct(location.href) && !dismissed.has(location.href);
+      if (show && !present) mount(cfg.baseUrl, cfg.token);
+      else if (!show && present) present.remove();
+    };
+
+    sync();
+
+    // Most of these retailers are SPAs that change the URL without reloading,
+    // so the content script's one-time run isn't enough. Watch for URL changes.
+    let last = location.href;
+    setInterval(() => {
+      if (location.href !== last) {
+        last = location.href;
+        sync();
+      }
+    }, 1200);
   });
 }
 
@@ -53,7 +106,10 @@ function mount(baseUrl, token) {
 
   const btn = root.getElementById('t');
   const label = root.getElementById('label');
-  root.getElementById('x').addEventListener('click', () => host.remove());
+  root.getElementById('x').addEventListener('click', () => {
+    dismissed.add(location.href);
+    host.remove();
+  });
 
   btn.addEventListener('click', async () => {
     btn.disabled = true;

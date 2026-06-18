@@ -8,10 +8,11 @@ Trackit instance with one click. It reuses your existing API — no backend chan
 - **Track anything**: open a product page on any supported store, click the
   Trackit toolbar icon, hit **Track this item**. The server auto-detects the
   retailer and pulls in the product name, image, and price.
-- **Floating button** (optional): on supported retailer pages a small
-  "＋ Track this item" button appears bottom-right so you can track without
-  opening the popup. Toggle it off anytime from the Options page, or dismiss it
-  per-page with the ✕.
+- **Floating button** (optional): on supported retailer **product** pages a
+  small "＋ Track this item" button appears bottom-right so you can track without
+  opening the popup. It's scoped to product URLs (e.g. Amazon `/dp/`, Walmart
+  `/ip/`, Best Buy `….p`) and follows in-page navigation on single-page sites.
+  Toggle it off anytime from the Options page, or dismiss it per-page with the ✕.
 
 ## How it works
 

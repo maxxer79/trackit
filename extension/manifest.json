@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Trackit — Track this item",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Send the current retailer product page to your Trackit instance with one click.",
   "action": {
     "default_popup": "popup.html",
