@@ -12,6 +12,7 @@ import api from '../lib/api';
 import StoreLogo from '../components/ui/StoreLogo';
 import PriceHistoryChart, { StockHistoryEvent } from '../components/products/PriceHistoryChart';
 import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge';
+import StockTimelinePanel from '../components/products/StockTimelinePanel';
 import SimilarItems from '../components/products/SimilarItems';
 
 const PRICE_OPTIONS = [
@@ -411,6 +412,9 @@ export default function ProductPage() {
 
       {/* How often this product comes back in stock */}
       <RestockFrequencyBadge slug={slug!} />
+
+      {/* Visual in/out stock history timeline */}
+      <StockTimelinePanel slug={slug!} />
 
       {/* Price history chart (renders only when there are ≥2 priced points) */}
       <PriceHistoryChart events={stockHistory as StockHistoryEvent[]} />

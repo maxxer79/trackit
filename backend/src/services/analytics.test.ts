@@ -1,7 +1,60 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeRestocks, restockFrequency } from './analytics';
+import { summarizeRestocks, restockFrequency, buildStockTimeline } from './analytics';
 
-const day = (n: number) => new Date(2026, 0, n).toISOString(); // Jan n, local
+const day = (n: number) => new Date(2026, 0, n).toISOString();
+
+describe('buildStockTimeline', () => {
+  it('returns no segments for no events', () => {
+    const t = buildStockTimeline([]);
+    expect(t.segments).toEqual([]);
+    expect(t.restockCount).toBe(0);
+    expect(t.firstAt).toBeNull();
+  });
+
+  it('builds in/out periods and counts restocks (single store)', () => {
+    const now = new Date(2026, 0, 13);
+    const t = buildStockTimeline(
+      [
+        { status: 'OUT_OF_STOCK', createdAt: day(1) },
+        { status: 'IN_STOCK', createdAt: day(2) },
+        { status: 'OUT_OF_STOCK', createdAt: day(5) },
+        { status: 'IN_STOCK', createdAt: day(12) },
+      ],
+      now
+    );
+    expect(t.segments.map((s) => s.state)).toEqual(['out', 'in', 'out', 'in']);
+    expect(t.segments.map((s) => s.days)).toEqual([1, 3, 7, 1]);
+    expect(t.restockCount).toBe(2);
+  });
+
+  it('treats the product as in stock if ANY store is in stock', () => {
+    const now = new Date(2026, 0, 6);
+    const t = buildStockTimeline(
+      [
+        { status: 'OUT_OF_STOCK', createdAt: day(1), storeSlug: 'a' },
+        { status: 'IN_STOCK', createdAt: day(2), storeSlug: 'b' }, // overall → in
+        { status: 'OUT_OF_STOCK', createdAt: day(4), storeSlug: 'b' }, // both out → out
+      ],
+      now
+    );
+    expect(t.segments.map((s) => s.state)).toEqual(['out', 'in', 'out']);
+    expect(t.restockCount).toBe(1);
+  });
+
+  it('ignores UNKNOWN when deriving state', () => {
+    const now = new Date(2026, 0, 4);
+    const t = buildStockTimeline(
+      [
+        { status: 'OUT_OF_STOCK', createdAt: day(1) },
+        { status: 'UNKNOWN', createdAt: day(2) },
+        { status: 'IN_STOCK', createdAt: day(3) },
+      ],
+      now
+    );
+    expect(t.restockCount).toBe(1);
+    expect(t.segments.map((s) => s.state)).toEqual(['out', 'in']);
+  });
+}); // Jan n, local
 
 describe('restockFrequency', () => {
   it('returns empty for no events', () => {

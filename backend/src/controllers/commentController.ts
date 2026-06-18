@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
-import { restockFrequency } from '../services/analytics';
+import { restockFrequency, buildStockTimeline } from '../services/analytics';
 
 export const getComments = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -98,5 +98,26 @@ export const getRestockFrequency = async (req: Request, res: Response): Promise<
   } catch (error) {
     logger.error('GetRestockFrequency error', error);
     res.status(500).json({ error: 'Failed to compute restock frequency' });
+  }
+};
+
+// Visual in/out timeline from the product's global StockEvent history.
+export const getStockTimeline = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    const product = await prisma.product.findUnique({ where: { slug }, select: { id: true } });
+    if (!product) { res.status(404).json({ error: 'Product not found' }); return; }
+
+    const events = await prisma.stockEvent.findMany({
+      where: { productId: product.id },
+      select: { status: true, createdAt: true, storeSlug: true, storeName: true },
+      orderBy: { createdAt: 'asc' },
+      take: 2000,
+    });
+
+    res.json(buildStockTimeline(events));
+  } catch (error) {
+    logger.error('GetStockTimeline error', error);
+    res.status(500).json({ error: 'Failed to build stock timeline' });
   }
 };

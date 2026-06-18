@@ -110,6 +110,24 @@ export function useSimilarProducts(slug: string) {
   });
 }
 
+export interface StockTimeline {
+  segments: { state: 'in' | 'out'; start: string; end: string; days: number }[];
+  restockCount: number;
+  firstAt: string | null;
+}
+
+export function useStockTimeline(slug: string) {
+  return useQuery<StockTimeline>({
+    queryKey: ['stock-timeline', slug],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${slug}/timeline`);
+      return data;
+    },
+    enabled: !!slug,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useRestockFrequency(slug: string) {
   return useQuery<RestockFrequency>({
     queryKey: ['restock-frequency', slug],

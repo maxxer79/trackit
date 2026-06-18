@@ -101,6 +101,77 @@ export function restockFrequency(
   };
 }
 
+// ── Stock timeline ────────────────────────────────────────────────────────────
+// Collapse a product's per-store StockEvent rows into overall in/out periods.
+// The product is "in stock" whenever ANY store is in stock. Replays events in
+// time order, tracking each store's last known state; UNKNOWN never changes a
+// store's state. Produces colored segments for a visual timeline.
+
+export interface TimelineEvent {
+  status: string;
+  createdAt: Date | string;
+  storeSlug?: string | null;
+  storeName?: string | null;
+}
+export interface TimelineSegment {
+  state: 'in' | 'out';
+  start: string; // ISO
+  end: string; // ISO
+  days: number;
+}
+export interface StockTimeline {
+  segments: TimelineSegment[];
+  restockCount: number;
+  firstAt: string | null;
+}
+
+export function buildStockTimeline(events: TimelineEvent[], now: Date = new Date()): StockTimeline {
+  const round1 = (n: number): number => Math.round(n * 10) / 10;
+  const sorted = events
+    .map((e) => ({
+      status: e.status,
+      at: e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt),
+      key: e.storeSlug || e.storeName || '_',
+    }))
+    .filter((e) => !Number.isNaN(e.at.getTime()))
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+
+  const storeState = new Map<string, boolean>();
+  const segments: TimelineSegment[] = [];
+  let current: 'in' | 'out' | null = null;
+  let segStart: Date | null = null;
+  let restockCount = 0;
+  let firstAt: Date | null = null;
+
+  const pushSeg = (state: 'in' | 'out', start: Date, end: Date): void => {
+    segments.push({
+      state,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      days: round1(Math.max((end.getTime() - start.getTime()) / 86_400_000, 0)),
+    });
+  };
+
+  for (const ev of sorted) {
+    if (!firstAt) firstAt = ev.at;
+    if (ev.status !== 'UNKNOWN') storeState.set(ev.key, IN_STOCK_STATUSES.has(ev.status));
+    const overall: 'in' | 'out' = [...storeState.values()].some(Boolean) ? 'in' : 'out';
+
+    if (current === null) {
+      current = overall;
+      segStart = ev.at;
+    } else if (overall !== current) {
+      pushSeg(current, segStart!, ev.at);
+      if (overall === 'in') restockCount++;
+      current = overall;
+      segStart = ev.at;
+    }
+  }
+  if (current !== null && segStart) pushSeg(current, segStart, now);
+
+  return { segments, restockCount, firstAt: firstAt ? firstAt.toISOString() : null };
+}
+
 export function summarizeRestocks(
   rows: RestockRow[],
   timezone: string,
