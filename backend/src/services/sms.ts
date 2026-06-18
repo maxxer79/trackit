@@ -7,7 +7,7 @@ interface SmsPayload {
   productUrl: string;
   price?: number | null;
   status: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
   previousPrice?: number | null;
 }
 
@@ -44,11 +44,17 @@ export async function sendSmsAlert(payload: SmsPayload): Promise<void> {
           } at ${storeName}!`,
           `Shop: ${productUrl}`,
         ].join('\n')
-      : [
-          `🟢 TrackIt Alert`,
-          `${productName} is now ${statusLabel(status)} at ${storeName}${priceStr}!`,
-          `Shop: ${productUrl}`,
-        ].join('\n');
+      : kind === 'LOW_STOCK'
+        ? [
+            `⚠️ TrackIt Low Stock`,
+            `${productName} is running low at ${storeName}${priceStr}. Grab it before it sells out!`,
+            `Shop: ${productUrl}`,
+          ].join('\n')
+        : [
+            `🟢 TrackIt Alert`,
+            `${productName} is now ${statusLabel(status)} at ${storeName}${priceStr}!`,
+            `Shop: ${productUrl}`,
+          ].join('\n');
 
   await client.messages.create({
     body: message,

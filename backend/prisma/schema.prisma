@@ -22,6 +22,7 @@ model User {
   notifySms      Boolean   @default(false)
   notifyDiscord  Boolean   @default(false)
   notifyPriceDrop Boolean  @default(false)
+  notifyLowStock  Boolean  @default(false)
   // Quiet hours: suppress external notification channels during this window.
   // Start/end are minutes-from-midnight (0..1439) in the user's timezone.
   quietHoursEnabled Boolean @default(false)
@@ -269,4 +270,5 @@ enum AlertType {
   PRICE_DROP
   BACK_IN_STOCK
   OUT_OF_STOCK
+  LOW_STOCK
 }

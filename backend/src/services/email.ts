@@ -8,7 +8,7 @@ interface EmailPayload {
   productUrl: string;
   price?: number | null;
   status: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
   previousPrice?: number | null;
 }
 
@@ -59,10 +59,13 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
   const statusStr = statusLabel(status);
 
   const isDrop = kind === 'PRICE_DROP';
-  const subtitle = isDrop ? 'Price Drop Alert' : 'Stock Alert Notification';
+  const isLow = kind === 'LOW_STOCK';
+  const subtitle = isDrop ? 'Price Drop Alert' : isLow ? 'Low Stock Alert' : 'Stock Alert Notification';
   const headline = isDrop
     ? `Good news — the price just dropped on an item you're tracking.`
-    : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
+    : isLow
+      ? `Heads up — an item you're tracking is <strong style="color:#ff9f0a;">running low</strong>. Grab it before it sells out.`
+      : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
   const priceCardHtml = isDrop
     ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price?.toFixed(2) ?? '?'}${
         previousPrice
@@ -74,7 +77,9 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
       : '';
   const subject = isDrop
     ? `💸 Price drop: ${productName} now $${price?.toFixed(2) ?? ''} at ${storeName}`
-    : `🟢 ${productName} is ${statusStr} at ${storeName}${priceStr}`;
+    : isLow
+      ? `⚠️ ${productName} is running low at ${storeName}${priceStr}`
+      : `🟢 ${productName} is ${statusStr} at ${storeName}${priceStr}`;
 
   const html = `
 <!DOCTYPE html>

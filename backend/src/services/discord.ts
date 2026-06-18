@@ -7,7 +7,7 @@ interface DiscordPayload {
   productUrl: string;
   price?: number | null;
   status: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
   previousPrice?: number | null;
 }
 
@@ -35,6 +35,7 @@ export async function sendDiscordAlert(payload: DiscordPayload): Promise<void> {
   if (!webhookUrl) return;
 
   const isDrop = kind === 'PRICE_DROP';
+  const isLow = kind === 'LOW_STOCK';
   const priceField = isDrop
     ? { name: '💸 Price drop', value: `$${price?.toFixed(2) ?? '?'}${previousPrice ? ` (was $${previousPrice.toFixed(2)})` : ''}`, inline: true }
     : price
@@ -44,8 +45,12 @@ export async function sendDiscordAlert(payload: DiscordPayload): Promise<void> {
   const embed = {
     title: productName,
     url: productUrl,
-    color: isDrop ? 0x0071e3 : statusColor(status),
-    description: isDrop ? `**💸 Price drop** at **${storeName}**` : `**${statusLabel(status)}** at **${storeName}**`,
+    color: isDrop ? 0x0071e3 : isLow ? 0xff9f0a : statusColor(status),
+    description: isDrop
+      ? `**💸 Price drop** at **${storeName}**`
+      : isLow
+        ? `**⚠️ Running low** at **${storeName}**`
+        : `**${statusLabel(status)}** at **${storeName}**`,
     fields: [
       ...(priceField ? [priceField] : []),
       { name: '🏪 Store', value: storeName, inline: true },

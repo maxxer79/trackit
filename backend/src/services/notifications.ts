@@ -52,8 +52,8 @@ interface NotificationPayload {
   status: string;
   autoBuyEnabled?: boolean;
   autoBuyMaxPrice?: number;
-  // 'PRICE_DROP' reuses this whole pipeline with price-drop-flavored messaging.
-  kind?: 'RESTOCK' | 'PRICE_DROP';
+  // 'PRICE_DROP' / 'LOW_STOCK' reuse this whole pipeline with flavored messaging.
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
   previousPrice?: number | null;
 }
 
@@ -167,7 +167,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productId: product.id,
         storeSlug: payload.storeSlug,
         storeName,
-        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : 'IN_STOCK',
+        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : kind === 'LOW_STOCK' ? 'LOW_STOCK' : 'IN_STOCK',
         status: status as any,
         price,
         productUrl,

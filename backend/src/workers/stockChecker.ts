@@ -343,6 +343,67 @@ stockCheckerQueue.process(
             }
           }
 
+          // Low-stock alerts (opt-in): an item that WAS fully in stock has
+          // dropped to LIMITED. Distinct from a restock (OUT→in already alerts)
+          // — this is the "selling out, grab it" signal.
+          if (listing.stockStatus === 'IN_STOCK' && result.status === 'LIMITED') {
+            const lowTrackers = await prisma.tracking.findMany({
+              where: {
+                productId: product.id,
+                isActive: true,
+                user: { notifyLowStock: true },
+                OR: [{ watchStores: { isEmpty: true } }, { watchStores: { has: storeSlug } }],
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true, email: true, name: true, emailAlerts: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true,
+                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
+                  },
+                },
+              },
+            });
+
+            if (lowTrackers.length > 0) {
+              logger.info('low stock detected — notifying trackers', {
+                ...ctx,
+                price: result.price,
+                trackerCount: lowTrackers.length,
+              });
+
+              for (const tracker of lowTrackers) {
+                if (
+                  !passesAlertRules(
+                    {
+                      alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
+                      alertDays: tracker.alertDays,
+                    },
+                    { price: result.price ?? null, timezone: tracker.user.timezone }
+                  )
+                ) {
+                  continue;
+                }
+                await sendNotifications({
+                  user: {
+                    ...tracker.user,
+                    notifyEmail: tracker.user.emailAlerts && tracker.notifyEmail,
+                    notifyPush: tracker.user.pushAlerts && tracker.notifyPush,
+                    autoBuyEnabled: tracker.user.autoBuyEnabled,
+                  },
+                  product,
+                  storeSlug,
+                  storeName: listing.store.name,
+                  productUrl: result.productUrl ?? listing.url,
+                  price: result.price,
+                  status: result.status,
+                  kind: 'LOW_STOCK',
+                });
+              }
+            }
+          }
+
           await prisma.scraperLog.create({
             data: {
               storeSlug,

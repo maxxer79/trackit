@@ -12,6 +12,7 @@ interface NotifPrefs {
   pushEnabled: boolean;
   discordEnabled: boolean;
   priceDropEnabled: boolean;
+  lowStockEnabled: boolean;
   quietHoursEnabled: boolean;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
@@ -305,6 +306,15 @@ export default function SettingsPage() {
               description="Get notified when a tracked item's price falls"
               checked={form.priceDropEnabled ?? false}
               onChange={(v) => handleChange('priceDropEnabled', v)}
+            />
+
+            {/* Low stock */}
+            <ToggleRow
+              icon="⚠️"
+              label="Low Stock Alerts"
+              description="Get notified when an in-stock item drops to limited stock"
+              checked={form.lowStockEnabled ?? false}
+              onChange={(v) => handleChange('lowStockEnabled', v)}
             />
           </div>
         </motion.div>

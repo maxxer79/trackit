@@ -18,7 +18,7 @@ interface PushPayload {
   price?: number | null;
   status: string;
   productSlug: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
   previousPrice?: number | null;
 }
 
@@ -38,13 +38,20 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
 
   const priceStr = price ? ` — $${price.toFixed(2)}` : '';
   const isDrop = kind === 'PRICE_DROP';
+  const isLow = kind === 'LOW_STOCK';
   const statusLabel = status === 'LIMITED' ? 'Limited Stock' : status === 'PREORDER' ? 'Pre-order Available' : 'In Stock';
   const wasStr = previousPrice ? ` (was $${previousPrice.toFixed(2)})` : '';
-  const title = isDrop ? `💸 Price drop: ${productName}` : `🟢 ${productName} is ${statusLabel}!`;
+  const title = isDrop
+    ? `💸 Price drop: ${productName}`
+    : isLow
+      ? `⚠️ ${productName} is running low`
+      : `🟢 ${productName} is ${statusLabel}!`;
   const body = isDrop
     ? `Now $${price?.toFixed(2) ?? '?'}${wasStr} at ${storeName}. Tap to shop.`
-    : `Available at ${storeName}${priceStr}. Tap to shop now.`;
-  const tagPrefix = isDrop ? 'pricedrop' : 'stock';
+    : isLow
+      ? `Limited stock at ${storeName}${priceStr}. Grab it before it sells out.`
+      : `Available at ${storeName}${priceStr}. Tap to shop now.`;
+  const tagPrefix = isDrop ? 'pricedrop' : isLow ? 'lowstock' : 'stock';
 
   const notification = JSON.stringify({
     title,
