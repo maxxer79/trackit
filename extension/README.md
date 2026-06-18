@@ -8,6 +8,10 @@ Trackit instance with one click. It reuses your existing API — no backend chan
 - **Track anything**: open a product page on any supported store, click the
   Trackit toolbar icon, hit **Track this item**. The server auto-detects the
   retailer and pulls in the product name, image, and price.
+- **Floating button** (optional): on supported retailer pages a small
+  "＋ Track this item" button appears bottom-right so you can track without
+  opening the popup. Toggle it off anytime from the Options page, or dismiss it
+  per-page with the ✕.
 
 ## How it works
 
@@ -38,7 +42,11 @@ still works.
 - `activeTab` — read the URL of the tab you're on, only when you click the icon.
 - `storage` — keep your instance URL and access token locally.
 - host access to **your instance only** — requested when you connect, so the
-  extension can call your API. It does not request access to all sites.
+  extension can call your API.
+- supported **retailer pages** — the floating button's content script runs on
+  the stores Trackit supports (Amazon, Best Buy, Walmart, Target, etc.). It only
+  reads `location.href` and never touches page content. Turn the button off in
+  Options if you'd rather not run it.
 
 ## Notes
 

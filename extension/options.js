@@ -16,6 +16,8 @@ async function render() {
     $('connected').hidden = false;
     $('form').hidden = true;
     $('connectedMsg').textContent = `Connected to ${baseUrl}${userName ? ` as ${userName}` : ''} ✓`;
+    const { floatingButton } = await store.get(['floatingButton']);
+    $('floatingButton').checked = floatingButton !== false; // default on
   } else {
     $('connected').hidden = true;
     $('form').hidden = false;
@@ -83,4 +85,7 @@ async function disconnect() {
 
 $('connect').addEventListener('click', connect);
 $('disconnect').addEventListener('click', disconnect);
+$('floatingButton').addEventListener('change', (e) => {
+  store.set({ floatingButton: e.target.checked });
+});
 render();
