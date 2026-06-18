@@ -7,6 +7,8 @@ function formatHour(h: number): string {
   return `${hour12} ${period}`;
 }
 
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 function prettyRetailer(slug: string): string {
   if (slug === 'unknown') return 'Unknown store';
   return slug
@@ -23,8 +25,10 @@ export default function InsightsPanel() {
   if (isLoading || !data || data.summary.total < 1) return null;
 
   const { summary, windowDays, timezone } = data;
-  const { total, restocksPerMonth, peakHour, byHour, topRetailers } = summary;
+  const { total, restocksPerMonth, peakHour, byHour, byDayOfWeek, topRetailers } = summary;
   const maxHour = Math.max(...byHour, 1);
+  const maxDow = Math.max(...byDayOfWeek, 1);
+  const peakDow = byDayOfWeek.indexOf(Math.max(...byDayOfWeek));
 
   return (
     <div className="card p-5 mb-8">
@@ -90,6 +94,26 @@ export default function InsightsPanel() {
           ) : (
             <p className="text-footnote text-dark-label3">No retailer data yet.</p>
           )}
+        </div>
+      </div>
+
+      {/* Day-of-week breakdown */}
+      <div className="mt-5 pt-4 border-t border-dark-separator">
+        <p className="text-caption1 text-dark-label2 mb-2">Which days they restock</p>
+        <div className="flex items-end gap-2">
+          {byDayOfWeek.map((n, d) => (
+            <div key={d} className="flex-1 flex flex-col items-center gap-1">
+              <div className="w-full flex items-end h-12" title={`${DOW_LABELS[d]}: ${n}`}>
+                <div
+                  className={`w-full rounded-sm ${d === peakDow && n > 0 ? 'bg-apple-blue' : 'bg-dark-surface2'}`}
+                  style={{ height: `${Math.max((n / maxDow) * 100, 6)}%` }}
+                />
+              </div>
+              <span className={`text-caption2 ${d === peakDow && n > 0 ? 'text-apple-blue font-semibold' : 'text-dark-label3'}`}>
+                {DOW_LABELS[d]}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
