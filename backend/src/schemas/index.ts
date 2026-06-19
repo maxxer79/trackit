@@ -89,6 +89,35 @@ export const bulkTrackingSchema = z
     message: 'No changes provided for update',
   });
 
+// ── Purchases / delivery tracking ─────────────────────────────────────────────
+
+const carrierEnum = z.enum(['ups', 'usps', 'fedex', 'dhl', 'amazon', 'other']);
+const purchaseStatusEnum = z.enum(['ORDERED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED']);
+
+export const createPurchaseSchema = z.object({
+  productId: z.string().min(1),
+  storeName: z.string().max(120).nullish(),
+  storeSlug: z.string().max(120).nullish(),
+  price: z.number().nonnegative().nullish(),
+  carrier: carrierEnum.nullish(),
+  trackingNumber: z.string().max(100).nullish(),
+  status: purchaseStatusEnum.optional(),
+  note: z.string().max(2000).nullish(),
+  purchasedAt: z.string().nullish(),
+});
+
+export const updatePurchaseSchema = z
+  .object({
+    storeName: z.string().max(120).nullish(),
+    price: z.number().nonnegative().nullish(),
+    carrier: carrierEnum.nullish(),
+    trackingNumber: z.string().max(100).nullish(),
+    status: purchaseStatusEnum.optional(),
+    note: z.string().max(2000).nullish(),
+    deliveredAt: z.string().nullish(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
+
 // ── Comments ──────────────────────────────────────────────────────────────────
 
 export const createCommentSchema = z.object({
@@ -108,6 +137,7 @@ export const updatePreferencesSchema = z.object({
   pushEnabled: z.boolean().optional(),
   discordEnabled: z.boolean().optional(),
   priceDropEnabled: z.boolean().optional(),
+  lowStockEnabled: z.boolean().optional(),
   autoBuyEnabled: z.boolean().optional(),
   quietHoursEnabled: z.boolean().optional(),
   quietHoursStart: z.number().int().min(0).max(1439).nullish(),

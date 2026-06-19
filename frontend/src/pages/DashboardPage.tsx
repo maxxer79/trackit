@@ -12,6 +12,7 @@ import { downloadFile } from '../lib/download';
 import InsightsPanel from '../components/dashboard/InsightsPanel';
 import ItemNotesTags from '../components/dashboard/ItemNotesTags';
 import ItemAlertRules from '../components/dashboard/ItemAlertRules';
+import MarkPurchased from '../components/dashboard/MarkPurchased';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -359,6 +360,9 @@ export default function DashboardPage() {
 
                     {/* Per-item advanced alert rules */}
                     <ItemAlertRules productId={item.product.id} alertMaxPrice={item.alertMaxPrice} alertDays={item.alertDays} />
+
+                    {/* Mark as purchased → delivery tracking */}
+                    <MarkPurchased productId={item.product.id} defaultPrice={lowestPrice} />
                   </div>
 
                   {/* Actions */}

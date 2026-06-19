@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import trackingRoutes from './routes/tracking';
+import purchaseRoutes from './routes/purchases';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import userRoutes from './routes/users';
@@ -58,6 +59,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/purchases', purchaseRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);

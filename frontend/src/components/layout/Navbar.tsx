@@ -69,6 +69,9 @@ export default function Navbar() {
               <NavLink to="/alerts" className={({ isActive }) => clsx('nav-link', isActive && 'active')}>
                 Alerts
               </NavLink>
+              <NavLink to="/purchases" className={({ isActive }) => clsx('nav-link', isActive && 'active')}>
+                Purchases
+              </NavLink>
               {user.role === 'ADMIN' && (
                 <NavLink to="/admin" className={({ isActive }) => clsx('nav-link text-apple-purple', isActive && 'bg-apple-purple/10')}>
                   Admin
@@ -128,6 +131,7 @@ export default function Navbar() {
                       <div className="p-1">
                         {[
                           { to: '/dashboard', label: 'Dashboard' },
+                          { to: '/purchases', label: 'Purchases' },
                           { to: '/settings', label: 'Settings' },
                           ...(user.role === 'ADMIN' ? [{ to: '/admin', label: '⚡ Admin Panel' }] : []),
                         ].map(({ to, label }) => (

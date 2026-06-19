@@ -15,6 +15,7 @@ import { BACKEND_VERSION } from './version';
 import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import trackingRoutes from './routes/tracking';
+import purchaseRoutes from './routes/purchases';
 import storeRoutes from './routes/stores';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
@@ -98,6 +99,7 @@ app.get('/api/health/worker', workerHealthHandler);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/purchases', purchaseRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -169,8 +171,32 @@ async function ensureSchema(): Promise<void> {
       )
     `);
 
+    // Purchases / delivery tracking table (created here to match the Purchase
+    // model in schema.prisma — no prisma migrate on boot).
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "purchases" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "productId" TEXT NOT NULL,
+        "productName" TEXT NOT NULL,
+        "productSlug" TEXT,
+        "storeName" TEXT,
+        "storeSlug" TEXT,
+        "price" DECIMAL,
+        "purchasedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "carrier" TEXT,
+        "trackingNumber" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'ORDERED',
+        "deliveredAt" TIMESTAMP(3),
+        "note" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     const indexes = [
       'CREATE INDEX IF NOT EXISTS "trackings_productId_idx" ON "trackings" ("productId")',
+      'CREATE INDEX IF NOT EXISTS "purchases_userId_purchasedAt_idx" ON "purchases" ("userId", "purchasedAt")',
       'CREATE INDEX IF NOT EXISTS "store_products_storeId_idx" ON "store_products" ("storeId")',
       'CREATE INDEX IF NOT EXISTS "alerts_userId_idx" ON "alerts" ("userId")',
       'CREATE INDEX IF NOT EXISTS "notifications_userId_idx" ON "notifications" ("userId")',

@@ -43,8 +43,34 @@ model User {
   pushTokens    PushToken[]
   notifications Notification[]
   comments      Comment[]
+  purchases     Purchase[]
 
   @@map("users")
+}
+
+model Purchase {
+  id             String    @id @default(cuid())
+  userId         String
+  productId      String
+  productName    String
+  productSlug    String?
+  storeName      String?
+  storeSlug      String?
+  price          Decimal?
+  purchasedAt    DateTime  @default(now())
+  carrier        String?
+  trackingNumber String?
+  status         String    @default("ORDERED")
+  deliveredAt    DateTime?
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purchasedAt(sort: Desc)])
+  @@map("purchases")
 }
 
 model Product {
@@ -66,6 +92,7 @@ model Product {
   storeListings StoreProduct[]
   trackings     Tracking[]
   comments      Comment[]
+  purchases     Purchase[]
 
   @@map("products")
 }
