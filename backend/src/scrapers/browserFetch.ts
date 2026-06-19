@@ -5,13 +5,41 @@
  * PerimeterX, etc.) or serves a JS-only shell. Launches Chromium with the
  * stealth plugin so the request looks like a real customer's browser.
  *
- * All browser fetches are serialized through a single queue so concurrent
- * scrape jobs can't launch a pile of Chromium instances on the NAS.
+ * Local Chromium fetches are gated (serialized by default) so concurrent scrape
+ * jobs can't launch a pile of Chromium instances on the NAS. FlareSolverr calls
+ * use a separate small pool — they're remote HTTP and shouldn't block Chromium.
  */
 import axios from 'axios';
 import logger from '../utils/logger';
 
-let queue: Promise<unknown> = Promise.resolve();
+/**
+ * Two independent concurrency gates so one slow path can't starve the others:
+ *  - chromiumLimit: local headless Chromium is heavy (NAS RAM), so serialize it
+ *    by default. Raise BROWSER_CONCURRENCY if the NAS has headroom.
+ *  - flareLimit: FlareSolverr is a separate service reached over HTTP — its calls
+ *    don't need NAS-side serialization. Allowing a few in flight stops a pile of
+ *    slow solves from blocking every other fetch (the old single queue meant a
+ *    backlog of FlareSolverr solves timed out unrelated fetches like AliExpress).
+ */
+function createLimiter(max: number) {
+  let active = 0;
+  const waiters: Array<() => void> = [];
+  return async function limit<T>(task: () => Promise<T>): Promise<T> {
+    while (active >= max) await new Promise<void>((res) => waiters.push(res));
+    active++;
+    try {
+      return await task();
+    } finally {
+      active--;
+      waiters.shift()?.();
+    }
+  };
+}
+const chromiumLimit = createLimiter(Math.max(1, Number(process.env.BROWSER_CONCURRENCY) || 1));
+// Default 2 — a single FlareSolverr browser can't handle many concurrent solves
+// (they pile up internally and hit the 55s timeout). Raise only if you run
+// FlareSolverr with multiple browsers / replicas.
+const flareLimit = createLimiter(Math.max(1, Number(process.env.FLARESOLVERR_CONCURRENCY) || 2));
 
 /**
  * FlareSolverr (https://github.com/FlareSolverr/FlareSolverr) is a
@@ -308,20 +336,20 @@ export function fetchRawJson(rawUrl: string, timeoutMs = 40000): Promise<any | n
       if (browser) await browser.close().catch(() => {});
     }
   };
-  const result = queue.then(run, run);
-  queue = result.catch(() => {});
-  return result;
+  return chromiumLimit(run);
 }
 
 export function fetchRenderedHtml(rawUrl: string, timeoutMs = 40000, opts: RenderOptions = {}): Promise<string | null> {
   const url = cleanTrackingParams(rawUrl);
-  const run = async (): Promise<string | null> => {
-    // Strategy 1: FlareSolverr (if configured) — best against Cloudflare
-    if (!opts.skipFlareSolverr) {
-      const solved = await fetchViaFlareSolverr(url, timeoutMs);
-      if (solved) return solved;
-    }
 
+  // Strategy 1: FlareSolverr (if configured) — its own concurrency pool, NOT on
+  // the serial Chromium queue, so a backlog of solves can't time out other work.
+  const tryFlare = async (): Promise<string | null> => {
+    if (opts.skipFlareSolverr) return null;
+    return flareLimit(() => fetchViaFlareSolverr(url, timeoutMs));
+  };
+
+  const run = async (): Promise<string | null> => {
     // Strategy 2: local stealth Chromium
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let browser: any;
@@ -386,8 +414,10 @@ export function fetchRenderedHtml(rawUrl: string, timeoutMs = 40000, opts: Rende
     }
   };
 
-  // Serialize: each fetch waits for the previous one to finish
-  const result = queue.then(run, run);
-  queue = result.catch(() => {});
-  return result as Promise<string | null>;
+  return (async () => {
+    const solved = await tryFlare();
+    if (solved) return solved;
+    // Local Chromium fallback — serialized via its own gate.
+    return chromiumLimit(run);
+  })();
 }
