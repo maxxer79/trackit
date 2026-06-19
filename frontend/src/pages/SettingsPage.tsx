@@ -157,7 +157,17 @@ export default function SettingsPage() {
       // Surface the real reason — name/message tells us exactly what failed.
       const reason = err?.message || err?.name || 'unknown error';
       console.error('Push subscribe failed:', err);
-      toast.error(`Failed to enable push: ${reason}`);
+      // "push service error" = the browser's push backend rejected/was unreachable.
+      // Almost always a de-Googled browser (Brave/ungoogled) or a network that
+      // blocks FCM (Pi-hole/AdGuard). Give an actionable hint.
+      if (/push service/i.test(reason)) {
+        toast.error(
+          'Push service unavailable. Try Chrome, Edge, or Firefox, and make sure your network (Pi-hole/AdGuard/firewall) isn’t blocking the push service.',
+          { duration: 9000 }
+        );
+      } else {
+        toast.error(`Failed to enable push: ${reason}`);
+      }
     } finally {
       setPushLoading(false);
     }
