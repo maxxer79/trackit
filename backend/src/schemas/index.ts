@@ -174,6 +174,7 @@ export const addStoreProductSchema = z.object({
   storeId: z.string().min(1, 'storeId is required'),
   url: z.string().url('Enter a valid product URL'),
   price: z.number().nullish(),
+  condition: z.enum(['NEW', 'OPEN_BOX', 'USED', 'REFURBISHED']).optional(),
 });
 
 export const updateStockSchema = z.object({

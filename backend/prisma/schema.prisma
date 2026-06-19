@@ -122,6 +122,7 @@ model StoreProduct {
   currency    String    @default("USD")
   inStock     Boolean   @default(false)
   stockStatus String?   // IN_STOCK | OUT_OF_STOCK | PREORDER | LIMITED | UNKNOWN
+  condition   String    @default("NEW") // NEW | OPEN_BOX | USED | REFURBISHED
   stockLevel  Int?
   isActive    Boolean   @default(true)
   lastChecked DateTime?

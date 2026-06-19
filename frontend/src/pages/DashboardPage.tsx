@@ -346,7 +346,7 @@ export default function DashboardPage() {
                                 : 'border-dark-separator text-dark-label3 hover:text-dark-label1'
                             }`}
                           >
-                            {s.storeName}
+                            {s.storeName}{(s.condition && s.condition !== 'NEW') ? ` · ${s.condition === 'OPEN_BOX' ? 'Open Box' : s.condition === 'REFURBISHED' ? 'Refurb' : 'Used'}` : ''}
                           </a>
                         ))}
                         {item.stockStatuses.length > 5 && (

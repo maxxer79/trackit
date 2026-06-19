@@ -30,7 +30,7 @@ const EMPTY_FORM: ProductForm = {
   isActive: true,
 };
 
-interface StoreForm { storeId: string; url: string; price: string; }
+interface StoreForm { storeId: string; url: string; price: string; condition: string; }
 
 export default function AdminProducts() {
   const qc = useQueryClient();
@@ -41,7 +41,7 @@ export default function AdminProducts() {
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [storeProduct, setStoreProduct] = useState<Product | null>(null);
-  const [storeForm, setStoreForm] = useState<StoreForm>({ storeId: '', url: '', price: '' });
+  const [storeForm, setStoreForm] = useState<StoreForm>({ storeId: '', url: '', price: '', condition: 'NEW' });
   const [fetchingImage, setFetchingImage] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [scrapingId, setScrapingId] = useState<string | null>(null);
@@ -138,11 +138,11 @@ export default function AdminProducts() {
   });
 
   const addStoreListing = useMutation({
-    mutationFn: async (body: { productId: string; storeId: string; url: string; price?: number }) =>
+    mutationFn: async (body: { productId: string; storeId: string; url: string; price?: number; condition?: string }) =>
       api.post('/admin/store-products', body),
     onSuccess: () => {
       refetchStoreListings();
-      setStoreForm({ storeId: '', url: '', price: '' });
+      setStoreForm({ storeId: '', url: '', price: '', condition: 'NEW' });
       toast.success('Store link added');
     },
     onError: () => toast.error('Failed to add store link'),
@@ -294,7 +294,7 @@ export default function AdminProducts() {
                     </svg>
                   </Link>
                   <button
-                    onClick={() => { setStoreProduct(p); setStoreForm({ storeId: '', url: '', price: '' }); }}
+                    onClick={() => { setStoreProduct(p); setStoreForm({ storeId: '', url: '', price: '', condition: 'NEW' }); }}
                     className="btn-icon w-8 h-8 text-dark-label2 hover:text-apple-purple hover:bg-apple-purple/10"
                     title="Manage store links"
                   >
@@ -492,7 +492,14 @@ export default function AdminProducts() {
                   <div key={s.storeId ?? s.storeName} className="flex items-center gap-3 px-3 py-2.5 rounded-apple bg-dark-surface2">
                     <StoreLogo logoUrl={s.storeLogo} domain={s.storeSlug ? `${s.storeSlug}.com` : null} name={s.storeName ?? ''} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-footnote font-semibold text-dark-label1">{s.storeName}</p>
+                      <p className="text-footnote font-semibold text-dark-label1">
+                        {s.storeName}
+                        {s.condition && s.condition !== 'NEW' && (
+                          <span className="ml-1.5 text-caption2 text-apple-orange font-medium">
+                            {s.condition === 'OPEN_BOX' ? 'Open Box' : s.condition === 'REFURBISHED' ? 'Refurb' : 'Used'}
+                          </span>
+                        )}
+                      </p>
                       {s.productUrl && (
                         <a href={s.productUrl} target="_blank" rel="noopener noreferrer"
                           className="text-caption2 text-apple-blue hover:underline truncate block">
@@ -577,6 +584,15 @@ export default function AdminProducts() {
                 <input type="number" value={storeForm.price} onChange={(e) => setStoreForm(f => ({ ...f, price: e.target.value }))}
                   className="input" placeholder="999.99" step="0.01" min="0" />
               </div>
+              <div>
+                <label className="block text-caption2 text-dark-label3 mb-1">Condition</label>
+                <select value={storeForm.condition} onChange={(e) => setStoreForm(f => ({ ...f, condition: e.target.value }))} className="input">
+                  <option value="NEW">New</option>
+                  <option value="OPEN_BOX">Open Box</option>
+                  <option value="USED">Used</option>
+                  <option value="REFURBISHED">Refurbished</option>
+                </select>
+              </div>
             </div>
           </div>
           <div className="flex gap-3 pt-1">
@@ -589,6 +605,7 @@ export default function AdminProducts() {
                   storeId: storeForm.storeId,
                   url: storeForm.url,
                   price: storeForm.price ? parseFloat(storeForm.price) : undefined,
+                  condition: storeForm.condition,
                 });
               }}
               disabled={addStoreListing.isPending || !storeForm.storeId || !storeForm.url}

@@ -371,11 +371,12 @@ export const deleteAdminStore = async (req: Request, res: Response): Promise<voi
 
 export const addStoreProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { productId, storeId, url, price } = req.body;
+    const { productId, storeId, url, price, condition } = req.body;
+    const cond = condition || 'NEW';
     const sp = await prisma.storeProduct.upsert({
       where: { productId_storeId: { productId, storeId } },
-      update: { url, price },
-      create: { productId, storeId, url, price },
+      update: { url, price, condition: cond },
+      create: { productId, storeId, url, price, condition: cond },
       include: { store: true },
     });
     res.json(sp);

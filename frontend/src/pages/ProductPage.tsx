@@ -14,6 +14,7 @@ import PriceHistoryChart, { StockHistoryEvent } from '../components/products/Pri
 import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge';
 import StockTimelinePanel from '../components/products/StockTimelinePanel';
 import SimilarItems from '../components/products/SimilarItems';
+import { conditionLabel, CONDITION_BADGE, CONDITION_LABEL } from '../lib/condition';
 
 const PRICE_OPTIONS = [
   { label: 'Any price', value: null },
@@ -79,6 +80,7 @@ export default function ProductPage() {
   const [commentText, setCommentText] = useState('');
   const [priceLimit, setPriceLimit] = useState<number | null>(null);
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
+  const [conditionFilter, setConditionFilter] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const [liveStatuses, setLiveStatuses] = useState<Record<string, {
@@ -205,6 +207,7 @@ export default function ProductPage() {
   // Apply filters
   const filteredStatuses = mergedStatuses.filter((s: any) => {
     if (storeFilter && s.storeName !== storeFilter) return false;
+    if (conditionFilter && (s.condition ?? 'NEW') !== conditionFilter) return false;
     if (priceLimit !== null) {
       if (s.status === 'IN_STOCK' || s.status === 'LIMITED') {
         if (s.price && s.price > priceLimit) return false;
@@ -212,6 +215,10 @@ export default function ProductPage() {
     }
     return true;
   });
+
+  // Only surface the condition filter when there's something other than plain New.
+  const conditionsPresent = [...new Set(mergedStatuses.map((s: any) => s.condition ?? 'NEW'))];
+  const showConditionFilter = conditionsPresent.some((c) => c !== 'NEW');
 
   const inStockStatuses = mergedStatuses.filter((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED');
 
@@ -289,6 +296,30 @@ export default function ProductPage() {
         />
       </div>
 
+      {/* Condition filter (only when non-New listings exist) */}
+      {showConditionFilter && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-caption2 text-dark-label3">Condition:</span>
+          <button
+            onClick={() => setConditionFilter(null)}
+            className={clsx('text-caption2 px-2.5 py-1 rounded-pill border transition-colors',
+              !conditionFilter ? 'border-apple-blue text-apple-blue bg-apple-blue/10' : 'border-dark-separator text-dark-label2 hover:text-dark-label1')}
+          >
+            All
+          </button>
+          {conditionsPresent.map((c) => (
+            <button
+              key={c}
+              onClick={() => setConditionFilter(c === conditionFilter ? null : c)}
+              className={clsx('text-caption2 px-2.5 py-1 rounded-pill border transition-colors',
+                c === conditionFilter ? 'border-apple-blue text-apple-blue bg-apple-blue/10' : 'border-dark-separator text-dark-label2 hover:text-dark-label1')}
+            >
+              {CONDITION_LABEL[c] ?? c}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Active filter chips */}
       {(priceLimit !== null || storeFilter !== null) && (
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -350,6 +381,11 @@ export default function ProductPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="text-subhead font-semibold text-dark-label1">{s.storeName}</p>
+                    {(s.condition ?? 'NEW') !== 'NEW' && (
+                      <span className={clsx('text-caption2 px-1.5 py-0.5 rounded-pill border font-medium', CONDITION_BADGE[s.condition] ?? CONDITION_BADGE.NEW)}>
+                        {conditionLabel(s.condition)}
+                      </span>
+                    )}
                     {isSearchLink && (
                       <span className="text-caption2 text-dark-label3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                         <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
