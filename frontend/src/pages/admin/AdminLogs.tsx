@@ -63,6 +63,24 @@ export default function AdminLogs() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
 
+  // Restock-screenshot pipeline diagnostic
+  const [ssUrl, setSsUrl] = useState('');
+  const [ssBusy, setSsBusy] = useState(false);
+  const [ssResult, setSsResult] = useState<any>(null);
+
+  const runScreenshotTest = async () => {
+    setSsBusy(true);
+    setSsResult(null);
+    try {
+      const { data } = await api.post('/admin/test-screenshot', { url: ssUrl || undefined });
+      setSsResult(data);
+    } catch (err: any) {
+      setSsResult({ ok: false, reason: err?.response?.data?.error || err?.message || 'Request failed' });
+    } finally {
+      setSsBusy(false);
+    }
+  };
+
   const { data, isLoading } = useQuery<LogsResponse>({
     queryKey: ['admin-logs', page, statusFilter, search],
     queryFn: async () => {
@@ -98,6 +116,43 @@ export default function AdminLogs() {
             {data?.total?.toLocaleString() ?? 0} entries • auto-refreshes every 15s
           </p>
         </div>
+      </div>
+
+      {/* Restock screenshot pipeline test */}
+      <div className="card p-4 mb-6">
+        <h2 className="text-headline font-semibold text-dark-label1 mb-1">Restock screenshot test</h2>
+        <p className="text-caption1 text-dark-label2 mb-3">
+          Verify the proof-screenshot pipeline (env flag, volume writability, Chromium capture) without waiting for a real restock.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={ssUrl}
+            onChange={(e) => setSsUrl(e.target.value)}
+            placeholder="Product URL to capture (default: example.com)"
+            className="input flex-1 min-w-[220px] text-sm"
+          />
+          <button onClick={runScreenshotTest} disabled={ssBusy} className="btn-primary px-5 py-2.5 text-subhead disabled:opacity-40">
+            {ssBusy ? 'Capturing…' : 'Run test'}
+          </button>
+        </div>
+        {ssResult && (
+          <div className={clsx('mt-3 text-footnote rounded-apple p-3', ssResult.ok ? 'bg-apple-green/10 text-apple-green' : 'bg-apple-red/10 text-apple-red')}>
+            {ssResult.ok ? (
+              <div className="space-y-1">
+                <p className="font-semibold">✓ Screenshot captured successfully</p>
+                <p className="text-dark-label2">Saved to {ssResult.dir}</p>
+                <a href={`${import.meta.env.VITE_API_URL || '/api'}${ssResult.url}`} target="_blank" rel="noopener noreferrer" className="text-apple-blue hover:underline">
+                  View captured image ↗
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="font-semibold">✗ {ssResult.reason || 'Failed'}</p>
+                {ssResult.dir && <p className="text-dark-label2">dir: {ssResult.dir} · writable: {String(ssResult.writable)} · enabled: {String(ssResult.enabled)}</p>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Per-retailer health — rolling window from logged scrape attempts */}

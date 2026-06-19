@@ -1,8 +1,51 @@
 import { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
 import { checkStockForProduct, runStockCheck, fetchProductImage } from '../services/stockChecker';
+import { captureScreenshot, screenshotEnabled, screenshotDir } from '../services/screenshot';
 import logger from '../utils/logger';
+
+// POST /api/admin/test-screenshot — verify the restock-proof pipeline without
+// waiting for a real restock. Reports the exact failure point if any.
+export const testScreenshot = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const url = (req.body?.url as string)?.trim() || 'https://example.com';
+    const enabled = screenshotEnabled();
+    const dir = screenshotDir();
+
+    let writable = false;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const probe = path.join(dir, `.probe-${Date.now()}`);
+      fs.writeFileSync(probe, 'ok');
+      fs.unlinkSync(probe);
+      writable = true;
+    } catch {
+      writable = false;
+    }
+
+    if (!enabled) {
+      res.json({ ok: false, enabled, dir, writable, reason: 'SCREENSHOT_ENABLED is not set to "true" on the backend service' });
+      return;
+    }
+    if (!writable) {
+      res.json({ ok: false, enabled, dir, writable, reason: `Screenshot directory is not writable: ${dir} — check the volume mount and its permissions` });
+      return;
+    }
+
+    const filename = await captureScreenshot(url);
+    if (!filename) {
+      res.json({ ok: false, enabled, dir, writable, reason: 'Chromium capture produced no file — Chromium may be missing in the image or the page failed to load (check backend logs)' });
+      return;
+    }
+    res.json({ ok: true, enabled, dir, writable, filename, url: `/screenshots/${filename}` });
+  } catch (error: any) {
+    logger.error('TestScreenshot error', error);
+    res.status(500).json({ ok: false, error: 'Test screenshot failed', detail: error?.message });
+  }
+};
 
 export const getDashboardStats = async (_req: Request, res: Response): Promise<void> => {
   try {

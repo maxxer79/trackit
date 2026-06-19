@@ -109,18 +109,55 @@ export default function SettingsPage() {
       toast.error('Push notifications not configured (missing VAPID key)');
       return;
     }
+    // Web Push only works in a secure context. Over plain http:// or a bare LAN
+    // IP the service worker can register but pushManager.subscribe() throws.
+    if (!window.isSecureContext) {
+      toast.error('Push needs HTTPS — open Trackit over https://, not http:// or an IP address.');
+      return;
+    }
     setPushLoading(true);
     try {
+      // Ask for permission explicitly so a prior "denied" gives a clear message
+      // instead of an opaque subscribe() failure.
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        toast.error(
+          perm === 'denied'
+            ? 'Notifications are blocked for this site — enable them in your browser’s site settings.'
+            : 'Notification permission was dismissed.'
+        );
+        setPushLoading(false);
+        return;
+      }
+
       const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
+      const appKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+
+      // Reuse an existing subscription; if it was made with a different VAPID key
+      // (e.g. key rotation), subscribing again throws InvalidStateError — so drop
+      // the stale one first.
+      let sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const existing = sub.options?.applicationServerKey
+          ? new Uint8Array(sub.options.applicationServerKey as ArrayBuffer).toString()
+          : '';
+        if (existing !== appKey.toString()) {
+          await sub.unsubscribe();
+          sub = null;
+        }
+      }
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+      }
+
       await api.post('/notifications/push/subscribe', sub.toJSON());
       setPushSubscribed(true);
       toast.success('Push notifications enabled!');
-    } catch (err) {
-      toast.error('Failed to enable push notifications');
+    } catch (err: any) {
+      // Surface the real reason — name/message tells us exactly what failed.
+      const reason = err?.message || err?.name || 'unknown error';
+      console.error('Push subscribe failed:', err);
+      toast.error(`Failed to enable push: ${reason}`);
     } finally {
       setPushLoading(false);
     }
