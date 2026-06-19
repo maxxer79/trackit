@@ -55,6 +55,9 @@ interface NotificationPayload {
   // 'PRICE_DROP' / 'LOW_STOCK' reuse this whole pipeline with flavored messaging.
   kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
   previousPrice?: number | null;
+  // Restock-proof screenshot filename (captured once per restock, shared across
+  // all trackers notified for that event).
+  screenshotPath?: string | null;
 }
 
 export async function sendNotifications(payload: NotificationPayload): Promise<void> {
@@ -175,6 +178,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         smsSent: user.notifySms && !!user.phoneNumber,
         pushSent: user.notifyPush,
         discordSent: user.notifyDiscord && !!user.discordWebhook,
+        screenshotPath: payload.screenshotPath ?? null,
       },
     });
   } catch (err: any) {

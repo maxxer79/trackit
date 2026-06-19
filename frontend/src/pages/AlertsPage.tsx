@@ -138,6 +138,18 @@ export default function AlertsPage() {
                     {alert.smsSent     && <span className="text-caption2 text-dark-label2">💬 SMS</span>}
                     {alert.pushSent    && <span className="text-caption2 text-dark-label2">🔔 Push</span>}
                     {alert.discordSent && <span className="text-caption2 text-dark-label2">🎮 Discord</span>}
+                    {alert.screenshotUrl && (
+                      <a
+                        href={`${import.meta.env.VITE_API_URL || '/api'}${alert.screenshotUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-caption2 text-apple-blue hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                        title="View the captured product page at restock"
+                      >
+                        📷 Proof
+                      </a>
+                    )}
                   </div>
                 </div>
 

@@ -90,6 +90,8 @@ export const getAlerts = async (req: AuthRequest, res: Response): Promise<void> 
         smsSent: a.smsSent,
         pushSent: a.pushSent,
         discordSent: a.discordSent,
+        // Path relative to the API base; the frontend prefixes its api baseURL.
+        screenshotUrl: a.screenshotPath ? `/screenshots/${a.screenshotPath}` : null,
         createdAt: a.sentAt,
       };
     });

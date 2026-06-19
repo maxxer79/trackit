@@ -9,6 +9,7 @@ import { initSocket } from './socket/index';
 import { scheduleAllProducts, getWorkerHealth } from './workers/stockChecker';
 import { pruneOldRecords } from './workers/prune';
 import { startDeliveryPoller } from './workers/deliveryPoller';
+import { ensureScreenshotDir, screenshotDir, screenshotEnabled, pruneOldScreenshots } from './services/screenshot';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
 
@@ -97,6 +98,10 @@ app.get('/api/health/worker', workerHealthHandler);
 
 // ─── API Routes ────────────────────────────────────────────────────────────────
 
+// Restock proof screenshots, served read-only under /api so they ride the same
+// reverse-proxy path as the rest of the backend (no extra proxy rule needed).
+app.use('/api/screenshots', express.static(screenshotDir(), { maxAge: '7d', fallthrough: false }));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/tracking', trackingRoutes);
@@ -134,6 +139,7 @@ async function ensureSchema(): Promise<void> {
     const { prisma } = await import('./config/database');
     await prisma.$executeRawUnsafe('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "modelNumber" TEXT');
     await prisma.$executeRawUnsafe('ALTER TABLE "alerts" ADD COLUMN IF NOT EXISTS "isRead" BOOLEAN NOT NULL DEFAULT false');
+    await prisma.$executeRawUnsafe('ALTER TABLE "alerts" ADD COLUMN IF NOT EXISTS "screenshotPath" TEXT');
     await prisma.$executeRawUnsafe('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notifyPriceDrop" BOOLEAN NOT NULL DEFAULT false');
     await prisma.$executeRawUnsafe('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notifyLowStock" BOOLEAN NOT NULL DEFAULT false');
     await prisma.$executeRawUnsafe(`ALTER TYPE "AlertType" ADD VALUE IF NOT EXISTS 'LOW_STOCK'`);
@@ -255,6 +261,12 @@ httpServer.listen(PORT, async () => {
 
   // Live delivery status (Ship24) — no-op unless SHIP24_API_KEY is set.
   startDeliveryPoller();
+
+  // Restock proof screenshots — prepare the dir and prune old files daily.
+  if (screenshotEnabled()) {
+    ensureScreenshotDir();
+    setInterval(() => pruneOldScreenshots(), 24 * 60 * 60 * 1000);
+  }
 });
 
 export default app;

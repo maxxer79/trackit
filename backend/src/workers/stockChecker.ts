@@ -5,6 +5,7 @@ import { isInStock, stockEventChanged } from '../scrapers/stockState';
 import { isPriceDrop } from '../services/priceDrop';
 import { sendNotifications } from '../services/notifications';
 import { passesAlertRules } from '../services/alertRules';
+import { captureScreenshot, screenshotEnabled } from '../services/screenshot';
 import { ScraperError } from '../errors';
 import { evaluateStaleness } from './workerHealth';
 import logger from '../utils/logger';
@@ -230,6 +231,13 @@ stockCheckerQueue.process(
               trackerCount: trackers.length,
             });
 
+            // Capture a proof screenshot ONCE for this restock (shared by all
+            // notified trackers). No-op unless SCREENSHOT_ENABLED; never throws.
+            let screenshotPath: string | null = null;
+            if (screenshotEnabled() && trackers.length > 0) {
+              screenshotPath = await captureScreenshot(result.productUrl ?? listing.url);
+            }
+
             // Send notifications to each tracker
             for (const tracker of trackers) {
               // Per-item advanced alert rules (price ceiling + allowed days).
@@ -260,6 +268,7 @@ stockCheckerQueue.process(
                 status: result.status,
                 autoBuyEnabled: tracker.autoBuyEnabled,
                 autoBuyMaxPrice: tracker.autoBuyMaxPrice ? Number(tracker.autoBuyMaxPrice) : undefined,
+                screenshotPath,
               });
             }
           }

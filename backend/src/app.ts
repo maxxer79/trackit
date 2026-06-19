@@ -9,6 +9,7 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import trackingRoutes from './routes/tracking';
 import purchaseRoutes from './routes/purchases';
+import { screenshotDir } from './services/screenshot';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import userRoutes from './routes/users';
@@ -54,6 +55,9 @@ app.use(morgan('combined', {
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'TrackIt API' });
 });
+
+// Restock proof screenshots (read-only), served under /api to ride the proxy.
+app.use('/api/screenshots', express.static(screenshotDir(), { maxAge: '7d', fallthrough: false }));
 
 // API Routes
 app.use('/api/auth', authRoutes);

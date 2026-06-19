@@ -135,12 +135,13 @@ export interface Alert {
   productUrl: string;
   status: StockStatus;
   price?: number | null;
-  type: 'IN_STOCK' | 'PRICE_DROP' | 'BACK_IN_STOCK' | 'OUT_OF_STOCK';
+  type: 'IN_STOCK' | 'PRICE_DROP' | 'BACK_IN_STOCK' | 'OUT_OF_STOCK' | 'LOW_STOCK';
   isRead: boolean;
   emailSent: boolean;
   smsSent: boolean;
   pushSent: boolean;
   discordSent: boolean;
+  screenshotUrl?: string | null;
   createdAt: string;
 }
 
