@@ -415,6 +415,18 @@ export const deleteAdminStore = async (req: Request, res: Response): Promise<voi
 export const addStoreProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const { productId, storeId, url, price, condition } = req.body;
+    // A bare homepage (no path) is never a trackable product page and will just
+    // hang/return UNKNOWN — reject it with a clear message.
+    try {
+      const u = new URL(url);
+      if (u.pathname.replace(/\/+$/, '') === '' && !u.search) {
+        res.status(400).json({ error: 'That looks like a store homepage, not a product page. Paste the full product/item URL.' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'Invalid product URL' });
+      return;
+    }
     const cond = condition || 'NEW';
     const sp = await prisma.storeProduct.upsert({
       where: { productId_storeId: { productId, storeId } },
