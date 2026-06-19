@@ -14,6 +14,7 @@ import PriceHistoryChart, { StockHistoryEvent } from '../components/products/Pri
 import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge';
 import StockTimelinePanel from '../components/products/StockTimelinePanel';
 import SimilarItems from '../components/products/SimilarItems';
+import ReportIssue from '../components/products/ReportIssue';
 import { conditionLabel, CONDITION_BADGE, CONDITION_LABEL } from '../lib/condition';
 
 const PRICE_OPTIONS = [
@@ -495,6 +496,13 @@ export default function ProductPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Report a scraper problem (signed-in users) */}
+      <ReportIssue
+        productId={product.id}
+        productName={product.name}
+        stores={(allStatuses ?? []).map((s: any) => ({ storeSlug: s.storeSlug, storeName: s.storeName }))}
+      />
 
       {/* Similar items — co-tracked, with category fallback */}
       <SimilarItems slug={slug!} />

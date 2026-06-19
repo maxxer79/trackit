@@ -44,8 +44,31 @@ model User {
   notifications Notification[]
   comments      Comment[]
   purchases     Purchase[]
+  scraperReports ScraperReport[]
 
   @@map("users")
+}
+
+model ScraperReport {
+  id                String   @id @default(cuid())
+  userId            String
+  productId         String?
+  productName       String?
+  storeSlug         String?
+  storeName         String?
+  productUrl        String?
+  issueType         String   // WRONG_STOCK | WRONG_PRICE | NOT_LOADING | SELECTOR_BROKEN | OTHER
+  description       String
+  suggestedSelector String?
+  status            String   @default("OPEN") // OPEN | REVIEWING | RESOLVED | DISMISSED
+  adminNote         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("scraper_reports")
 }
 
 model Purchase {

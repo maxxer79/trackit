@@ -2,14 +2,17 @@ import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { getDashboardStats, getUsers, createAdminUser, updateUser, deleteUser, getAdminProducts, createProduct, updateProduct, deleteProduct, scrapeProduct, scrapeAll, fetchImage, addStoreProduct, getAdminStores, createAdminStore, updateAdminStore, deleteAdminStore, testScreenshot } from '../controllers/adminController';
 import { testScraper, testAllScrapers, getScraperHealth } from '../controllers/scraperHealthController';
+import { getScraperReports, updateScraperReport } from '../controllers/scraperReportController';
 import { validate } from '../middleware/validate';
-import { createProductSchema, addStoreProductSchema, updateStockSchema, createAdminUserSchema, updateUserSchema } from '../schemas';
+import { createProductSchema, addStoreProductSchema, updateStockSchema, createAdminUserSchema, updateUserSchema, updateScraperReportSchema } from '../schemas';
 
 const router = Router();
 router.use(authenticate, requireAdmin);
 
 router.get('/stats', getDashboardStats);
 router.post('/test-screenshot', testScreenshot);
+router.get('/scraper-reports', getScraperReports);
+router.patch('/scraper-reports/:id', validate(updateScraperReportSchema), updateScraperReport);
 router.get('/logs', async (req, res) => {
   try {
     const { prisma } = await import('../config/database');

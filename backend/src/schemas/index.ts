@@ -118,6 +118,29 @@ export const updatePurchaseSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
 
+// ── Scraper problem reports ───────────────────────────────────────────────────
+
+const issueTypeEnum = z.enum(['WRONG_STOCK', 'WRONG_PRICE', 'NOT_LOADING', 'SELECTOR_BROKEN', 'OTHER']);
+const reportStatusEnum = z.enum(['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED']);
+
+export const createScraperReportSchema = z.object({
+  productId: z.string().nullish(),
+  productName: z.string().max(300).nullish(),
+  storeSlug: z.string().max(120).nullish(),
+  storeName: z.string().max(120).nullish(),
+  productUrl: z.union([z.string().url(), z.literal('')]).nullish(),
+  issueType: issueTypeEnum,
+  description: z.string().trim().min(5, 'Please describe the problem').max(2000),
+  suggestedSelector: z.string().max(500).nullish(),
+});
+
+export const updateScraperReportSchema = z
+  .object({
+    status: reportStatusEnum.optional(),
+    adminNote: z.string().max(2000).nullish(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
+
 // ── Comments ──────────────────────────────────────────────────────────────────
 
 export const createCommentSchema = z.object({

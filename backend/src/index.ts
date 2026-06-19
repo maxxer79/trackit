@@ -18,6 +18,7 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import trackingRoutes from './routes/tracking';
 import purchaseRoutes from './routes/purchases';
+import scraperReportRoutes from './routes/scraperReports';
 import storeRoutes from './routes/stores';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
@@ -106,6 +107,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/purchases', purchaseRoutes);
+app.use('/api/scraper-reports', scraperReportRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -204,6 +206,27 @@ async function ensureSchema(): Promise<void> {
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // User-submitted scraper problem reports (admin-reviewed; never auto-applied).
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "scraper_reports" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "productId" TEXT,
+        "productName" TEXT,
+        "storeSlug" TEXT,
+        "storeName" TEXT,
+        "productUrl" TEXT,
+        "issueType" TEXT NOT NULL,
+        "description" TEXT NOT NULL,
+        "suggestedSelector" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'OPEN',
+        "adminNote" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "scraper_reports_status_createdAt_idx" ON "scraper_reports" ("status", "createdAt")');
+
     // Upgrade existing purchases tables that predate the Ship24 columns.
     await prisma.$executeRawUnsafe('ALTER TABLE "purchases" ADD COLUMN IF NOT EXISTS "ship24TrackerId" TEXT');
     await prisma.$executeRawUnsafe('ALTER TABLE "purchases" ADD COLUMN IF NOT EXISTS "deliveryMilestone" TEXT');
