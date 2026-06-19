@@ -25,6 +25,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
+        // Don't let the SPA navigation fallback (index.html) hijack top-level
+        // navigations to backend routes — e.g. opening /api/screenshots/<file>.png
+        // must hit the network/backend, not serve the app shell.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.trackit\.io\/.*/i,
