@@ -16,7 +16,21 @@ export interface Purchase {
   deliveredAt: string | null;
   note: string | null;
   trackingUrl: string | null;
+  deliveryMilestone: string | null;
+  deliveryUpdatedAt: string | null;
+  liveTrackingEnabled?: boolean;
 }
+
+export const MILESTONE_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  info_received: 'Info received',
+  in_transit: 'In transit',
+  out_for_delivery: 'Out for delivery',
+  available_for_pickup: 'Ready for pickup',
+  failed_attempt: 'Failed attempt',
+  delivered: 'Delivered',
+  exception: 'Exception',
+};
 
 export const CARRIERS = [
   { id: 'ups', name: 'UPS' },
@@ -63,6 +77,17 @@ export function useUpdatePurchase() {
   return useMutation({
     mutationFn: async ({ id, ...body }: { id: string } & Partial<Purchase>) => {
       const { data } = await api.patch(`/purchases/${id}`, body);
+      return data as Purchase;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['purchases'] }),
+  });
+}
+
+export function useRefreshPurchaseTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await api.post(`/purchases/${id}/refresh-tracking`);
       return data as Purchase;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['purchases'] }),

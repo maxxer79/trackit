@@ -5,11 +5,14 @@ import {
   usePurchases,
   useUpdatePurchase,
   useDeletePurchase,
+  useRefreshPurchaseTracking,
   Purchase,
   CARRIERS,
   PURCHASE_STATUSES,
   STATUS_LABEL,
+  MILESTONE_LABEL,
 } from '../hooks/usePurchases';
+import { formatDistanceToNow } from 'date-fns';
 
 const STATUS_COLOR: Record<string, string> = {
   ORDERED: 'text-dark-label2',
@@ -22,9 +25,18 @@ const STATUS_COLOR: Record<string, string> = {
 function PurchaseRow({ purchase }: { purchase: Purchase }) {
   const update = useUpdatePurchase();
   const del = useDeletePurchase();
+  const refresh = useRefreshPurchaseTracking();
 
   const patch = (body: Partial<Purchase>) =>
     update.mutate({ id: purchase.id, ...body } as any, { onError: () => toast.error('Update failed') });
+
+  const doRefresh = () =>
+    refresh.mutate(purchase.id, {
+      onSuccess: (p) => toast.success(p.deliveryMilestone ? `Status: ${MILESTONE_LABEL[p.deliveryMilestone] ?? p.deliveryMilestone}` : 'Refreshed'),
+      onError: (e: any) => toast.error(e?.response?.data?.error || 'Could not refresh status'),
+    });
+
+  const canRefresh = purchase.liveTrackingEnabled && !!purchase.trackingNumber;
 
   return (
     <div className="card p-4">
@@ -102,7 +114,26 @@ function PurchaseRow({ purchase }: { purchase: Purchase }) {
             Track ↗
           </a>
         )}
+
+        {canRefresh && (
+          <button
+            onClick={doRefresh}
+            disabled={refresh.isPending}
+            className="btn-secondary px-3 py-1.5 text-caption1 shrink-0 disabled:opacity-40"
+            title="Fetch live status from the carrier"
+          >
+            {refresh.isPending ? 'Refreshing…' : '⟳ Refresh'}
+          </button>
+        )}
       </div>
+
+      {/* Live delivery status from Ship24 */}
+      {purchase.deliveryMilestone && (
+        <p className="text-caption2 text-dark-label3 mt-2">
+          Live status: <span className="text-dark-label2 font-medium">{MILESTONE_LABEL[purchase.deliveryMilestone] ?? purchase.deliveryMilestone}</span>
+          {purchase.deliveryUpdatedAt && ` · updated ${formatDistanceToNow(new Date(purchase.deliveryUpdatedAt), { addSuffix: true })}`}
+        </p>
+      )}
     </div>
   );
 }

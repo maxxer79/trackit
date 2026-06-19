@@ -58,11 +58,14 @@ model Purchase {
   storeSlug      String?
   price          Decimal?
   purchasedAt    DateTime  @default(now())
-  carrier        String?
-  trackingNumber String?
-  status         String    @default("ORDERED")
-  deliveredAt    DateTime?
-  note           String?
+  carrier          String?
+  trackingNumber   String?
+  status           String    @default("ORDERED")
+  deliveredAt      DateTime?
+  note             String?
+  ship24TrackerId  String?
+  deliveryMilestone String?  // raw Ship24 statusMilestone
+  deliveryUpdatedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

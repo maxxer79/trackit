@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { initSocket } from './socket/index';
 import { scheduleAllProducts, getWorkerHealth } from './workers/stockChecker';
 import { pruneOldRecords } from './workers/prune';
+import { startDeliveryPoller } from './workers/deliveryPoller';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
 
@@ -190,10 +191,17 @@ async function ensureSchema(): Promise<void> {
         "status" TEXT NOT NULL DEFAULT 'ORDERED',
         "deliveredAt" TIMESTAMP(3),
         "note" TEXT,
+        "ship24TrackerId" TEXT,
+        "deliveryMilestone" TEXT,
+        "deliveryUpdatedAt" TIMESTAMP(3),
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Upgrade existing purchases tables that predate the Ship24 columns.
+    await prisma.$executeRawUnsafe('ALTER TABLE "purchases" ADD COLUMN IF NOT EXISTS "ship24TrackerId" TEXT');
+    await prisma.$executeRawUnsafe('ALTER TABLE "purchases" ADD COLUMN IF NOT EXISTS "deliveryMilestone" TEXT');
+    await prisma.$executeRawUnsafe('ALTER TABLE "purchases" ADD COLUMN IF NOT EXISTS "deliveryUpdatedAt" TIMESTAMP(3)');
 
     const indexes = [
       'CREATE INDEX IF NOT EXISTS "trackings_productId_idx" ON "trackings" ("productId")',
@@ -244,6 +252,9 @@ httpServer.listen(PORT, async () => {
   // are swallowed inside pruneOldRecords so this never affects serving.
   setTimeout(() => void pruneOldRecords(), 60_000);
   setInterval(() => void pruneOldRecords(), 24 * 60 * 60 * 1000);
+
+  // Live delivery status (Ship24) — no-op unless SHIP24_API_KEY is set.
+  startDeliveryPoller();
 });
 
 export default app;

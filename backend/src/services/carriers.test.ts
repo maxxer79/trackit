@@ -1,5 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { carrierTrackingUrl } from './carriers';
+import { carrierTrackingUrl, mapShip24Milestone, ship24CourierCode } from './carriers';
+
+describe('mapShip24Milestone', () => {
+  it('maps known milestones to our statuses', () => {
+    expect(mapShip24Milestone('info_received')).toBe('ORDERED');
+    expect(mapShip24Milestone('pending')).toBe('ORDERED');
+    expect(mapShip24Milestone('in_transit')).toBe('SHIPPED');
+    expect(mapShip24Milestone('out_for_delivery')).toBe('OUT_FOR_DELIVERY');
+    expect(mapShip24Milestone('available_for_pickup')).toBe('OUT_FOR_DELIVERY');
+    expect(mapShip24Milestone('failed_attempt')).toBe('OUT_FOR_DELIVERY');
+    expect(mapShip24Milestone('delivered')).toBe('DELIVERED');
+  });
+  it('returns null for unmapped/exception milestones', () => {
+    expect(mapShip24Milestone('exception')).toBeNull();
+    expect(mapShip24Milestone('')).toBeNull();
+    expect(mapShip24Milestone(null)).toBeNull();
+    expect(mapShip24Milestone('nonsense')).toBeNull();
+  });
+});
+
+describe('ship24CourierCode', () => {
+  it('returns codes for the big four, null otherwise', () => {
+    expect(ship24CourierCode('ups')).toBe('ups');
+    expect(ship24CourierCode('FedEx')).toBe('fedex');
+    expect(ship24CourierCode('amazon')).toBeNull();
+    expect(ship24CourierCode('other')).toBeNull();
+    expect(ship24CourierCode(null)).toBeNull();
+  });
+});
 
 describe('carrierTrackingUrl', () => {
   it('builds known-carrier URLs with the encoded number', () => {
