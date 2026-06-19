@@ -11,6 +11,7 @@ import { GameStopScraper } from './gamestop';
 import { EbayScraper } from './ebay';
 import { GenericScraper } from './generic';
 import { HasbroPulseScraper } from './hasbropulse';
+import { AliExpressScraper } from './aliexpress';
 
 const scraperRegistry: Map<string, BaseScraper> = new Map();
 
@@ -57,6 +58,9 @@ scraperRegistry.set('hasbropulse', new WithGenericFallback('hasbropulse', new Ha
 scraperRegistry.set('apple', new WithGenericFallback('apple', new AppleScraper()));
 scraperRegistry.set('homedepot', new WithGenericFallback('homedepot', new HomeDepotScraper()));
 scraperRegistry.set('lowes', new WithGenericFallback('lowes', new LowesScraper()));
+// AliExpress has its own fast-render path (no generic fallback — the generic
+// browser render is exactly what hangs on AliExpress).
+scraperRegistry.set('aliexpress', new AliExpressScraper('aliexpress'));
 
 // All other stores use the generic scraper
 const allStores = [
@@ -81,6 +85,8 @@ for (const store of allStores) {
 // slug doesn't exactly match the registry name (a mismatched slug silently
 // routed Lowe's to the generic scraper).
 const domainMap: Record<string, string> = {
+  'aliexpress.com': 'aliexpress',
+  'aliexpress.us': 'aliexpress',
   'amazon.com': 'amazon',
   'apple.com': 'apple',
   'bestbuy.com': 'bestbuy',

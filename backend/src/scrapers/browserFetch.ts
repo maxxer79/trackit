@@ -147,6 +147,12 @@ export interface RenderOptions {
   waitSelector?: string;
   /** Skip FlareSolverr and go straight to local Chromium */
   skipFlareSolverr?: boolean;
+  /**
+   * Navigation wait strategy. Default 'networkidle2'. Sites that never go
+   * network-idle (AliExpress, constant polling) must use 'domcontentloaded'
+   * or the goto hangs until the timeout.
+   */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
 }
 
 /**
@@ -343,7 +349,7 @@ export function fetchRenderedHtml(rawUrl: string, timeoutMs = 40000, opts: Rende
       );
 
       logger.info(`[BrowserFetch] Rendering ${url}${opts.waitSelector ? ` (waiting for ${opts.waitSelector})` : ''}`);
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: timeoutMs });
+      await page.goto(url, { waitUntil: opts.waitUntil ?? 'networkidle2', timeout: timeoutMs });
       // Give client-side rendering a moment to settle
       await new Promise<void>((r) => setTimeout(r, 2500));
 
