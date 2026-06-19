@@ -412,6 +412,81 @@ export const deleteAdminStore = async (req: Request, res: Response): Promise<voi
   }
 };
 
+// GET /api/admin/failing-listings?hours=24&threshold=0.7&minAttempts=3
+// Surfaces active store listings whose recent scrapes mostly fail, so an admin
+// can shed dead weight (e.g. retailers that bot-block from this IP).
+export const getFailingListings = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const hours = Math.min(Math.max(parseInt((req.query.hours as string) || '24', 10) || 24, 1), 168);
+    const threshold = Math.min(Math.max(parseFloat((req.query.threshold as string) || '0.7'), 0.1), 1);
+    const minAttempts = Math.max(parseInt((req.query.minAttempts as string) || '3', 10) || 3, 1);
+    const since = new Date(Date.now() - hours * 3600_000);
+
+    const [totals, fails] = await Promise.all([
+      prisma.scraperLog.groupBy({ by: ['storeSlug', 'productSlug'], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+      prisma.scraperLog.groupBy({ by: ['storeSlug', 'productSlug'], where: { createdAt: { gte: since }, status: { not: 'success' } }, _count: { _all: true } }),
+    ]);
+
+    const failMap = new Map(fails.map((f) => [`${f.storeSlug}|${f.productSlug}`, f._count._all]));
+    // Keep only keys with enough attempts and a high failure rate.
+    const failingKeys = new Map<string, { total: number; failed: number; rate: number }>();
+    for (const t of totals) {
+      const total = t._count._all;
+      if (total < minAttempts) continue;
+      const failed = failMap.get(`${t.storeSlug}|${t.productSlug}`) ?? 0;
+      const rate = failed / total;
+      if (rate >= threshold) failingKeys.set(`${t.storeSlug}|${t.productSlug}`, { total, failed, rate });
+    }
+    if (failingKeys.size === 0) { res.json({ listings: [] }); return; }
+
+    const storeSlugs = [...new Set([...failingKeys.keys()].map((k) => k.split('|')[0]))];
+    const productSlugs = [...new Set([...failingKeys.keys()].map((k) => k.split('|')[1]))];
+
+    const listings = await prisma.storeProduct.findMany({
+      where: { isActive: true, store: { slug: { in: storeSlugs } }, product: { slug: { in: productSlugs } } },
+      include: { store: { select: { slug: true, name: true } }, product: { select: { slug: true, name: true } } },
+    });
+
+    const result = listings
+      .map((l) => {
+        const stats = failingKeys.get(`${l.store.slug}|${l.product.slug}`);
+        if (!stats) return null;
+        return {
+          id: l.id,
+          storeName: l.store.name,
+          storeSlug: l.store.slug,
+          productName: l.product.name,
+          productSlug: l.product.slug,
+          url: l.url,
+          lastChecked: l.lastChecked,
+          attempts: stats.total,
+          failed: stats.failed,
+          failureRate: Math.round(stats.rate * 100),
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => b.failureRate - a.failureRate || b.attempts - a.attempts);
+
+    res.json({ listings: result, window: { hours, threshold, minAttempts } });
+  } catch (error) {
+    logger.error('GetFailingListings error', error);
+    res.status(500).json({ error: 'Failed to compute failing listings' });
+  }
+};
+
+// POST /api/admin/store-products/bulk-deactivate  { ids: string[] }
+export const bulkDeactivateListings = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x: unknown) => typeof x === 'string') : [];
+    if (ids.length === 0) { res.status(400).json({ error: 'No listing ids provided' }); return; }
+    const result = await prisma.storeProduct.updateMany({ where: { id: { in: ids } }, data: { isActive: false } });
+    res.json({ deactivated: result.count });
+  } catch (error) {
+    logger.error('BulkDeactivateListings error', error);
+    res.status(500).json({ error: 'Failed to deactivate listings' });
+  }
+};
+
 export const addStoreProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const { productId, storeId, url, price, condition } = req.body;
@@ -430,7 +505,9 @@ export const addStoreProduct = async (req: Request, res: Response): Promise<void
     const cond = condition || 'NEW';
     const sp = await prisma.storeProduct.upsert({
       where: { productId_storeId: { productId, storeId } },
-      update: { url, price, condition: cond },
+      // isActive:true on update so re-adding a previously deactivated listing
+      // brings it back into the scrape rotation.
+      update: { url, price, condition: cond, isActive: true },
       create: { productId, storeId, url, price, condition: cond },
       include: { store: true },
     });

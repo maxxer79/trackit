@@ -81,6 +81,41 @@ export default function AdminLogs() {
     }
   };
 
+  // Failing listings finder + bulk deactivate
+  const [failBusy, setFailBusy] = useState(false);
+  const [failItems, setFailItems] = useState<any[] | null>(null);
+  const [failSel, setFailSel] = useState<Set<string>>(new Set());
+
+  const findFailing = async () => {
+    setFailBusy(true);
+    setFailSel(new Set());
+    try {
+      const { data } = await api.get('/admin/failing-listings', { params: { hours: 24, threshold: 0.7, minAttempts: 3 } });
+      setFailItems(data.listings || []);
+    } catch {
+      setFailItems([]);
+    } finally {
+      setFailBusy(false);
+    }
+  };
+
+  const toggleFail = (id: string) =>
+    setFailSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const deactivateSelected = async () => {
+    const ids = [...failSel];
+    if (ids.length === 0) return;
+    if (!window.confirm(`Deactivate ${ids.length} listing${ids.length === 1 ? '' : 's'}? They'll stop being scraped (you can re-add them later).`)) return;
+    try {
+      const { data } = await api.post('/admin/store-products/bulk-deactivate', { ids });
+      setFailItems((prev) => (prev || []).filter((l) => !failSel.has(l.id)));
+      setFailSel(new Set());
+      alert(`Deactivated ${data.deactivated} listing(s).`);
+    } catch {
+      alert('Failed to deactivate listings');
+    }
+  };
+
   const { data, isLoading } = useQuery<LogsResponse>({
     queryKey: ['admin-logs', page, statusFilter, search],
     queryFn: async () => {
@@ -152,6 +187,58 @@ export default function AdminLogs() {
               </div>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Failing listings — shed dead weight */}
+      <div className="card p-4 mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h2 className="text-headline font-semibold text-dark-label1">Failing listings</h2>
+          <div className="flex items-center gap-2">
+            {failSel.size > 0 && (
+              <button onClick={deactivateSelected} className="px-3 py-1.5 text-caption1 rounded-apple text-apple-red border border-apple-red/30 hover:bg-apple-red/10">
+                Deactivate {failSel.size} selected
+              </button>
+            )}
+            <button onClick={findFailing} disabled={failBusy} className="btn-primary px-4 py-2 text-subhead disabled:opacity-40">
+              {failBusy ? 'Scanning…' : 'Find failing listings'}
+            </button>
+          </div>
+        </div>
+        <p className="text-caption1 text-dark-label2 mb-3">
+          Active listings that failed ≥70% of their last 24h of checks (≥3 attempts). Deactivating stops them being scraped, freeing up FlareSolverr/Chromium for the ones that work.
+        </p>
+
+        {failItems !== null && (
+          failItems.length === 0 ? (
+            <p className="text-footnote text-dark-label3">No consistently-failing listings found. 🎉</p>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-caption2 text-dark-label3 px-1">
+                <input
+                  type="checkbox"
+                  checked={failSel.size === failItems.length && failItems.length > 0}
+                  onChange={(e) => setFailSel(e.target.checked ? new Set(failItems.map((l) => l.id)) : new Set())}
+                  className="accent-apple-blue"
+                />
+                Select all ({failItems.length})
+              </label>
+              {failItems.map((l) => (
+                <label key={l.id} className="flex items-center gap-3 px-3 py-2 rounded-apple bg-dark-surface2 cursor-pointer">
+                  <input type="checkbox" checked={failSel.has(l.id)} onChange={() => toggleFail(l.id)} className="accent-apple-blue shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-footnote font-semibold text-dark-label1 truncate">
+                      {l.storeName} <span className="text-dark-label3 font-normal">· {l.productName}</span>
+                    </p>
+                    <p className="text-caption2 text-dark-label3 truncate">{l.url}</p>
+                  </div>
+                  <span className="text-caption1 font-semibold text-apple-red shrink-0">
+                    {l.failureRate}% fail <span className="text-dark-label3 font-normal">({l.failed}/{l.attempts})</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )
         )}
       </div>
 
