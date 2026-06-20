@@ -153,6 +153,8 @@ model StoreProduct {
   isActive    Boolean   @default(true)
   lastChecked DateTime?
   checkCount  Int       @default(0)
+  failStreak  Int       @default(0) // consecutive UNKNOWN/error checks
+  skipUntil   DateTime? // adaptive backoff: don't scrape again until this time
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

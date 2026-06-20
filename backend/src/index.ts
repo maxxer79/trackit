@@ -152,6 +152,8 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "note" TEXT');
     await prisma.$executeRawUnsafe(`ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "tags" TEXT[] NOT NULL DEFAULT '{}'`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "condition" TEXT NOT NULL DEFAULT 'NEW'`);
+    await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "failStreak" INTEGER NOT NULL DEFAULT 0');
+    await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "skipUntil" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertMaxPrice" DECIMAL');
     await prisma.$executeRawUnsafe(`ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertDays" INTEGER[] NOT NULL DEFAULT '{}'`);
 

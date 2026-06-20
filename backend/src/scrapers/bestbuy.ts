@@ -28,6 +28,12 @@ export class BestBuyScraper extends BaseScraper {
       productUrl.match(/[?&]skuId=(\d+)/)?.[1] ||
       productUrl.match(/\/sku\/(\d{5,9})(?:[/?#]|$)/)?.[1];
 
+    // Fast-fail non-product URLs (homepage / search) — rendering bestbuy.com
+    // just hangs and never yields a product signal.
+    if (!sku && !/\/(product|site)\//i.test(productUrl)) {
+      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Not a Best Buy product URL (homepage or search page?)' };
+    }
+
     // 1. Authoritative priceBlocks API (plain → FlareSolverr-cookie replay).
     if (sku) {
       const api = await this.checkViaApi(sku, productUrl);

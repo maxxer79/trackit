@@ -37,6 +37,16 @@ function redisConfig() {
   }
 }
 
+// Adaptive backoff for chronically-failing listings: the more consecutive
+// UNKNOWN/error checks, the longer we wait before trying again — so blocked
+// retailers stop hogging FlareSolverr/Chromium every cycle while the ones that
+// resolve keep their normal cadence. 30 min × streak, capped at 6 h. A single
+// successful (definitive) check resets the streak.
+function backoffSkipUntil(failStreak: number): Date {
+  const minutes = Math.min(failStreak * 30, 360);
+  return new Date(Date.now() + minutes * 60_000);
+}
+
 export const stockCheckerQueue = new Bull('stock-checker', {
   redis: redisConfig(),
   defaultJobOptions: {
@@ -88,6 +98,12 @@ stockCheckerQueue.process(
     const results = await Promise.allSettled(
       product.storeListings.map(async (listing) => {
         const storeSlug = listing.store.slug;
+
+        // Adaptive backoff: skip listings that are in their cooldown window.
+        if (listing.skipUntil && new Date(listing.skipUntil).getTime() > Date.now()) {
+          return { listingId: listing.id, inStock: listing.inStock };
+        }
+
         const scraper = getScraperForStore(storeSlug, listing.url);
         const startTime = Date.now();
         let logStatus = 'success';
@@ -108,9 +124,10 @@ stockCheckerQueue.process(
           // network error). NEVER flip stock status on UNKNOWN — keep the
           // last known value and just record that we checked.
           if (result.status === 'UNKNOWN') {
+            const streak = (listing.failStreak ?? 0) + 1;
             await prisma.storeProduct.update({
               where: { id: listing.id },
-              data: { lastChecked: new Date(), checkCount: { increment: 1 } },
+              data: { lastChecked: new Date(), checkCount: { increment: 1 }, failStreak: streak, skipUntil: backoffSkipUntil(streak) },
             });
             await prisma.scraperLog.create({
               data: {
@@ -145,6 +162,8 @@ stockCheckerQueue.process(
               price: result.price ?? listing.price,
               lastChecked: new Date(),
               checkCount: { increment: 1 },
+              failStreak: 0,
+              skipUntil: null,
             },
           });
 
@@ -455,6 +474,12 @@ stockCheckerQueue.process(
               duration: Date.now() - startTime,
             },
           });
+
+          // A thrown error counts as a failed check too — back off.
+          const streak = (listing.failStreak ?? 0) + 1;
+          await prisma.storeProduct
+            .update({ where: { id: listing.id }, data: { lastChecked: new Date(), failStreak: streak, skipUntil: backoffSkipUntil(streak) } })
+            .catch(() => {});
         }
       })
     );
