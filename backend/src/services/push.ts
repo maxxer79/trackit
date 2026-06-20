@@ -61,9 +61,24 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
     url: productUrl,
     productSlug,
     tag: `${tagPrefix}-${productSlug}-${storeName.toLowerCase().replace(/\s/g, '-')}`,
+    renotify: true,
+    // Action buttons drawn on the notification itself. Platforms cap at
+    // Notification.maxActions (usually 2), so we ship exactly two: jump to the
+    // retailer, or snooze this item for a day.
+    //   shop → opens the retailer product URL (data.url)
+    //   mute → opens the app mute deep-link (data.muteUrl); the snooze is applied
+    //          in-app where the auth token lives — the SW can't call the API.
+    actions: [
+      { action: 'shop', title: isDrop ? '💸 Buy now' : '🛒 Shop' },
+      { action: 'mute', title: '🔕 Mute 1d' },
+    ],
     data: {
+      url: productUrl,
       productUrl,
       productSlug,
+      // Relative path — the service worker resolves it against the app origin,
+      // so it stays correct across dev / prod / custom domains.
+      muteUrl: `/product/${productSlug}?mute=1d`,
     },
   });
 

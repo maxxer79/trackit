@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useProduct, useAddTracking, useRemoveTracking } from '../hooks/useProducts';
+import { useProduct, useAddTracking, useRemoveTracking, useUpdateTracking } from '../hooks/useProducts';
 import { useAuthStore } from '../store/auth';
 import { Skeleton } from '../components/ui/Skeleton';
 import toast from 'react-hot-toast';
@@ -83,6 +83,45 @@ export default function ProductPage() {
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [conditionFilter, setConditionFilter] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  // Mute deep-link from a push notification's "Mute" action button:
+  // /product/:slug?mute=1d → snooze this item's alerts, then strip the param so
+  // a refresh doesn't re-trigger it. Runs once per arrival with a mute param.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const updateTracking = useUpdateTracking();
+  const muteHandledRef = useRef(false);
+  useEffect(() => {
+    const muteParam = searchParams.get('mute');
+    if (!muteParam || muteHandledRef.current || !product?.id) return;
+    muteHandledRef.current = true;
+
+    const DURATIONS: Record<string, number | 'forever'> = {
+      '1d': 86_400_000,
+      '1w': 7 * 86_400_000,
+      forever: 'forever',
+    };
+    const FOREVER = '2999-01-01T00:00:00.000Z';
+    const dur = DURATIONS[muteParam] ?? 86_400_000;
+    const until = dur === 'forever' ? FOREVER : new Date(Date.now() + dur).toISOString();
+    const label = muteParam === '1w' ? 'for 1 week' : muteParam === 'forever' ? 'until you unmute' : 'for 1 day';
+
+    if (!user) {
+      toast.error('Sign in to mute this item');
+    } else {
+      updateTracking.mutate(
+        { productId: product.id, mutedUntil: until },
+        {
+          onSuccess: () => toast.success(`🔕 Muted ${label} (still tracking)`),
+          onError: (err: any) =>
+            toast.error(err?.response?.data?.error || "Couldn't mute — are you tracking this item?"),
+        }
+      );
+    }
+
+    // Drop the param without adding a history entry.
+    searchParams.delete('mute');
+    setSearchParams(searchParams, { replace: true });
+  }, [product?.id, searchParams, user, updateTracking, setSearchParams]);
 
   const [liveStatuses, setLiveStatuses] = useState<Record<string, {
     status: string; price?: number | null; loading: boolean; lastCheckedAt?: string;

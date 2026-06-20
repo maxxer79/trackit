@@ -25,6 +25,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
+        // Layer our push + notificationclick handlers on top of the generated
+        // caching SW. Without this the SW has no push support at all, so neither
+        // restock notifications nor the Shop/Mute action buttons would fire.
+        importScripts: ['push-handler.js'],
         // Don't let the SPA navigation fallback (index.html) hijack top-level
         // navigations to backend routes — e.g. opening /api/screenshots/<file>.png
         // must hit the network/backend, not serve the app shell.
