@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Accent themes ─────────────────────────────────────────────── */
+/* Space-separated RGB so Tailwind's <alpha-value> opacity modifiers work.
+   Set via data-accent on <html>; independent of dark/light. */
+:root            { --accent-rgb: 0 113 227; }   /* Blue (default) */
+[data-accent="purple"] { --accent-rgb: 175 82 222; }
+[data-accent="green"]  { --accent-rgb: 48 199 89; }
+[data-accent="orange"] { --accent-rgb: 255 149 0; }
+[data-accent="pink"]   { --accent-rgb: 255 45 85; }
+[data-accent="teal"]   { --accent-rgb: 50 173 230; }
+[data-accent="red"]    { --accent-rgb: 255 59 48; }
+[data-accent="indigo"] { --accent-rgb: 88 86 214; }
+
 /* ── Theme CSS Variables ───────────────────────────────────────── */
 /* Dark mode defaults (also explicit .dark class) */
 :root, .dark {

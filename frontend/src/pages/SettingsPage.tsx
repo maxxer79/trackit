@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { useAuthStore } from '../store/auth';
-import { useThemeStore } from '../store/theme';
+import { useThemeStore, ACCENTS } from '../store/theme';
 import toast from 'react-hot-toast';
 
 interface NotifPrefs {
@@ -50,7 +50,7 @@ function urlBase64ToUint8Array(base64String: string) {
 export default function SettingsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const { theme, setTheme } = useThemeStore();
+  const { theme, setTheme, accent, setAccent } = useThemeStore();
 
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
@@ -252,6 +252,23 @@ export default function SettingsPage() {
               >
                 {t === 'dark' ? '🌙 Dark' : t === 'light' ? '☀️ Light' : '⚙️ System'}
               </button>
+            ))}
+          </div>
+
+          {/* Accent color */}
+          <p className="text-footnote font-semibold text-dark-label2 mt-5 mb-2">Accent color</p>
+          <div className="flex flex-wrap gap-3">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setAccent(a.id)}
+                title={a.name}
+                aria-label={a.name}
+                className={`w-9 h-9 rounded-full transition-transform hover:scale-110 ${
+                  accent === a.id ? 'ring-2 ring-offset-2 ring-offset-dark-surface1 ring-dark-label1' : ''
+                }`}
+                style={{ backgroundColor: `rgb(${a.rgb})` }}
+              />
             ))}
           </div>
         </motion.div>

@@ -9,7 +9,9 @@ export default {
       },
       colors: {
         apple: {
-          blue:    '#0071e3',
+          // Primary accent — driven by --accent-rgb so the whole UI (buttons,
+          // links, inputs, badges, /opacity variants) follows the chosen theme.
+          blue:    'rgb(var(--accent-rgb) / <alpha-value>)',
           blue2:   '#42a5f5',
           gray:    '#6e6e73',
           silver:  '#f5f5f7',

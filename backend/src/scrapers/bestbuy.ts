@@ -81,9 +81,17 @@ export class BestBuyScraper extends BaseScraper {
   // in <meta> (e.g. &quot;skuId&quot;:&quot;6618904&quot;), so match both encoded
   // and raw forms, plus the visible "SKU: 6618904".
   private mineSku(html: string): string | undefined {
+    // Decode the common entities first so encoded JSON in <meta>/attributes
+    // (&quot;skuId&quot;:&quot;6618904&quot;, &#x22;, etc.) matches the same as raw.
+    const decoded = html
+      .replace(/&quot;|&#34;|&#x22;/gi, '"')
+      .replace(/&#x2f;|&#47;/gi, '/')
+      .replace(/&amp;/gi, '&');
     const m =
-      html.match(/skuId(?:&quot;|&#34;|["'])?\s*[:=]\s*(?:&quot;|&#34;|["'])?(\d{6,8})/i) ||
-      html.match(/\bSKU:?\s*(?:<[^>]*>\s*)?(\d{6,8})\b/i);
+      decoded.match(/"skuId"\s*:\s*"?(\d{6,8})/i) || // analytics meta / hydration JSON
+      decoded.match(/"sku"\s*:\s*"?(\d{6,8})/i) || // JSON-LD Product.sku
+      decoded.match(/\bskuId["'=:\s]+(\d{6,8})/i) || // looser skuId=… / skuId:…
+      decoded.match(/\bSKU:?\s*(?:<[^>]*>\s*)?(\d{6,8})\b/i); // visible "SKU: 6618904"
     return m?.[1];
   }
 
