@@ -224,6 +224,8 @@ export function useUpdateTracking() {
       tags,
       alertMaxPrice,
       alertDays,
+      mutedUntil,
+      archivedAt,
     }: {
       productId: string;
       notifyEmail?: boolean;
@@ -235,6 +237,8 @@ export function useUpdateTracking() {
       tags?: string[];
       alertMaxPrice?: number | null;
       alertDays?: number[];
+      mutedUntil?: string | null;
+      archivedAt?: string | null;
     }) => {
       const { data } = await api.patch(`/tracking/${productId}`, {
         notifyEmail,
@@ -246,6 +250,8 @@ export function useUpdateTracking() {
         tags,
         alertMaxPrice,
         alertDays,
+        mutedUntil,
+        archivedAt,
       });
       return data;
     },

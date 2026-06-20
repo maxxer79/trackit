@@ -14,6 +14,7 @@
 export interface AlertRules {
   alertMaxPrice?: number | null;
   alertDays?: number[] | null;
+  mutedUntil?: Date | string | null;
 }
 export interface AlertContext {
   price?: number | null;
@@ -28,6 +29,14 @@ function dowInTz(d: Date, tz: string): number {
 }
 
 export function passesAlertRules(rules: AlertRules, ctx: AlertContext = {}): boolean {
+  // Silent mode: suppress all alerts while muted (tracking itself continues).
+  if (rules.mutedUntil) {
+    const until = rules.mutedUntil instanceof Date ? rules.mutedUntil : new Date(rules.mutedUntil);
+    if (!Number.isNaN(until.getTime()) && until.getTime() > (ctx.now ?? new Date()).getTime()) {
+      return false;
+    }
+  }
+
   // Price ceiling — only enforced when we actually know the price.
   if (rules.alertMaxPrice != null && ctx.price != null && ctx.price > rules.alertMaxPrice) {
     return false;

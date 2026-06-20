@@ -265,6 +265,7 @@ stockCheckerQueue.process(
                   {
                     alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
                     alertDays: tracker.alertDays,
+                    mutedUntil: tracker.mutedUntil,
                   },
                   { price: result.price ?? null, timezone: tracker.user.timezone }
                 )
@@ -344,6 +345,7 @@ stockCheckerQueue.process(
                     {
                       alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
                       alertDays: tracker.alertDays,
+                      mutedUntil: tracker.mutedUntil,
                     },
                     { price: result.price ?? null, timezone: tracker.user.timezone }
                   )
@@ -407,6 +409,7 @@ stockCheckerQueue.process(
                     {
                       alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
                       alertDays: tracker.alertDays,
+                      mutedUntil: tracker.mutedUntil,
                     },
                     { price: result.price ?? null, timezone: tracker.user.timezone }
                   )

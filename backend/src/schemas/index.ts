@@ -69,6 +69,8 @@ export const updateTrackingSchema = z
     tags: z.array(z.string().max(40)).max(20).optional(),
     alertMaxPrice: z.number().nonnegative().nullish(),
     alertDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    mutedUntil: z.string().nullish(),
+    archivedAt: z.string().nullish(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' });
 

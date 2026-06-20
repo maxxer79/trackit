@@ -9,6 +9,7 @@ import { initSocket } from './socket/index';
 import { scheduleAllProducts, getWorkerHealth } from './workers/stockChecker';
 import { pruneOldRecords } from './workers/prune';
 import { startDeliveryPoller } from './workers/deliveryPoller';
+import { startAutoArchive } from './workers/autoArchive';
 import { ensureScreenshotDir, screenshotDir, screenshotEnabled, pruneOldScreenshots } from './services/screenshot';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
@@ -155,6 +156,8 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "failStreak" INTEGER NOT NULL DEFAULT 0');
     await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "skipUntil" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertMaxPrice" DECIMAL');
+    await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "mutedUntil" TIMESTAMP(3)');
+    await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe(`ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertDays" INTEGER[] NOT NULL DEFAULT '{}'`);
 
     // Performance indexes. Applied here rather than via `prisma migrate` (which
@@ -286,6 +289,9 @@ httpServer.listen(PORT, async () => {
 
   // Live delivery status (Ship24) — no-op unless SHIP24_API_KEY is set.
   startDeliveryPoller();
+
+  // Auto-archive stale trackings (no-op unless AUTO_ARCHIVE_MONTHS > 0).
+  startAutoArchive();
 
   // Restock proof screenshots — prepare the dir and prune old files daily.
   if (screenshotEnabled()) {

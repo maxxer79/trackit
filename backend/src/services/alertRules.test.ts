@@ -39,6 +39,16 @@ describe('passesAlertRules', () => {
     expect(passesAlertRules(rules, { price: 40, now: MON, timezone: 'UTC' })).toBe(false); // day fails
   });
 
+  it('suppresses alerts while muted, allows after the mute expires', () => {
+    const future = new Date(Date.now() + 60_000);
+    const past = new Date(Date.now() - 60_000);
+    expect(passesAlertRules({ mutedUntil: future }, {})).toBe(false);
+    expect(passesAlertRules({ mutedUntil: past }, {})).toBe(true);
+    expect(passesAlertRules({ mutedUntil: null }, {})).toBe(true);
+    // A mute overrides an otherwise-passing rule set.
+    expect(passesAlertRules({ mutedUntil: future, alertMaxPrice: 100 }, { price: 50 })).toBe(false);
+  });
+
   it('honors timezone when picking the local weekday', () => {
     // 2026-06-22T01:00Z is still Sunday in New York (prev day).
     const lateSun = new Date('2026-06-22T01:00:00Z');

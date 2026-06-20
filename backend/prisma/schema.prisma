@@ -181,6 +181,8 @@ model Tracking {
   tags            String[]
   alertMaxPrice   Decimal?
   alertDays       Int[]
+  mutedUntil      DateTime? // silent mode: suppress alerts until this time (tracking continues)
+  archivedAt      DateTime? // hidden from the main dashboard; restorable
   autoBuyEnabled  Boolean  @default(false)
   autoBuyMaxPrice Decimal?
   createdAt       DateTime @default(now())

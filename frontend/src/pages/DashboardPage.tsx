@@ -13,6 +13,7 @@ import InsightsPanel from '../components/dashboard/InsightsPanel';
 import ItemNotesTags from '../components/dashboard/ItemNotesTags';
 import ItemAlertRules from '../components/dashboard/ItemAlertRules';
 import MarkPurchased from '../components/dashboard/MarkPurchased';
+import ItemMuteArchive from '../components/dashboard/ItemMuteArchive';
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
@@ -23,6 +24,7 @@ export default function DashboardPage() {
   const bulk = useBulkTracking();
   const [importUrl, setImportUrl] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string) =>
@@ -95,12 +97,16 @@ export default function DashboardPage() {
     ? 'Unlimited tracking'
     : `${user?.trackingCount ?? 0} / ${user?.trackingLimit ?? 1} items tracked`;
 
-  const inStockItems = tracking?.filter((t) =>
+  // Archived items are hidden from the main view (restorable from the Archived toggle).
+  const nonArchived = (tracking ?? []).filter((t: any) => !t.archivedAt);
+  const archivedItems = (tracking ?? []).filter((t: any) => !!t.archivedAt);
+
+  const inStockItems = nonArchived.filter((t) =>
     t.stockStatuses?.some((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED')
   );
 
-  const allTags = [...new Set((tracking ?? []).flatMap((t: any) => t.tags ?? []))].sort() as string[];
-  const visibleTracking = tracking?.filter(
+  const allTags = [...new Set(nonArchived.flatMap((t: any) => t.tags ?? []))].sort() as string[];
+  const visibleTracking = nonArchived.filter(
     (t: any) => !tagFilter || (t.tags ?? []).includes(tagFilter)
   );
 
@@ -156,7 +162,7 @@ export default function DashboardPage() {
           {[
             {
               label: 'Tracking',
-              value: tracking.length,
+              value: nonArchived.length,
               color: 'text-dark-label1',
             },
             {
@@ -166,7 +172,7 @@ export default function DashboardPage() {
             },
             {
               label: 'Out of Stock',
-              value: (tracking.length - (inStockItems?.length ?? 0)),
+              value: (nonArchived.length - (inStockItems?.length ?? 0)),
               color: 'text-apple-red',
             },
           ].map(({ label, value, color }) => (
@@ -254,7 +260,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={i} />)}
         </div>
-      ) : !tracking || tracking.length === 0 ? (
+      ) : nonArchived.length === 0 ? (
         <div className="card p-16 text-center">
           <p className="text-5xl mb-4">📦</p>
           <h2 className="text-title1 font-bold text-dark-label1 mb-2">Nothing tracked yet</h2>
@@ -363,6 +369,9 @@ export default function DashboardPage() {
 
                     {/* Mark as purchased → delivery tracking */}
                     <MarkPurchased productId={item.product.id} defaultPrice={lowestPrice} />
+
+                    {/* Silent mode + archive */}
+                    <ItemMuteArchive productId={item.product.id} mutedUntil={item.mutedUntil} />
                   </div>
 
                   {/* Actions */}
@@ -406,6 +415,39 @@ export default function DashboardPage() {
               </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {/* Archived items */}
+      {archivedItems.length > 0 && (
+        <div className="mt-8">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className="text-subhead font-semibold text-dark-label2 hover:text-dark-label1 flex items-center gap-2"
+          >
+            📦 Archived ({archivedItems.length}) {showArchived ? '▾' : '▸'}
+          </button>
+          {showArchived && (
+            <div className="space-y-2 mt-3">
+              {archivedItems.map((item: any) => (
+                <div key={item.id} className="card p-3 flex items-center gap-3">
+                  <Link to={`/product/${item.product.slug}`} className="shrink-0">
+                    <div className="w-10 h-10 rounded-apple bg-dark-surface2 overflow-hidden flex items-center justify-center">
+                      {item.product.imageUrl ? (
+                        <img src={item.product.imageUrl} alt={item.product.name} className="w-full h-full object-contain p-0.5" />
+                      ) : (
+                        <span className="opacity-30">📦</span>
+                      )}
+                    </div>
+                  </Link>
+                  <Link to={`/product/${item.product.slug}`} className="flex-1 min-w-0 text-footnote text-dark-label1 hover:text-apple-blue line-clamp-1">
+                    {item.product.name}
+                  </Link>
+                  <ItemMuteArchive productId={item.product.id} archived />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
