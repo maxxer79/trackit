@@ -202,7 +202,13 @@ export const getScraperHealth = async (req: Request, res: Response): Promise<voi
         by: ['storeSlug'],
         _max: { createdAt: true },
       }),
-      prisma.store.findMany({ where: { isActive: true }, select: { slug: true, name: true, isActive: true } }),
+      // Only retailers that still exist AND have at least one active listing —
+      // so deleted/emptied stores drop off the health view even though their old
+      // ScraperLog rows linger until pruned.
+      prisma.store.findMany({
+        where: { isActive: true, products: { some: { isActive: true } } },
+        select: { slug: true, name: true, isActive: true },
+      }),
     ]);
 
     const totalsBy = new Map(totals.map((t) => [t.storeSlug, t]));
@@ -218,8 +224,9 @@ export const getScraperHealth = async (req: Request, res: Response): Promise<voi
       statusBy.set(row.storeSlug, m);
     }
 
-    // Union of active stores and any store that has logs in the window.
-    const slugs = new Set<string>([...stores.map((s) => s.slug), ...statusBy.keys()]);
+    // Only current retailers with active listings — NOT every slug that has logs
+    // in the window (that would resurrect deleted stores from old log rows).
+    const slugs = new Set<string>(stores.map((s) => s.slug));
 
     const rows: ScraperHealthRow[] = [...slugs].map((slug) => {
       const counts = statusBy.get(slug) ?? {};
