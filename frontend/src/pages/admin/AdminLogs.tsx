@@ -40,6 +40,63 @@ interface ScraperHealthResponse {
   stores: ScraperHealthRow[];
 }
 
+interface LeaderboardEntry {
+  rank: number;
+  storeSlug: string;
+  storeName: string;
+  total: number;
+  success: number;
+  successRate: number | null;
+  avgDurationMs: number | null;
+  score: number;
+  hasData: boolean;
+}
+
+type OutageSeverity = 'outage' | 'partial' | 'isolated' | 'ok';
+
+interface OutageEntry {
+  storeSlug: string;
+  storeName: string;
+  severity: OutageSeverity;
+  listingsTotal: number;
+  listingsFailing: number;
+  failingFraction: number;
+  dominantFailureType: 'blocked' | 'error' | 'unknown' | null;
+}
+
+interface LeaderboardResponse {
+  windowHours: number;
+  generatedAt: string;
+  leaderboard: LeaderboardEntry[];
+  outages: OutageEntry[];
+}
+
+const OUTAGE_META: Record<Exclude<OutageSeverity, 'ok'>, { label: string; color: string; blurb: string }> = {
+  outage: {
+    label: 'Outage',
+    color: 'text-apple-red bg-apple-red/10 border-apple-red/20',
+    blurb: 'failing across the board — scraper-wide problem',
+  },
+  partial: {
+    label: 'Degrading',
+    color: 'text-apple-orange bg-apple-orange/10 border-apple-orange/20',
+    blurb: 'a large share of listings failing',
+  },
+  isolated: {
+    label: 'Isolated',
+    color: 'text-apple-yellow bg-apple-yellow/10 border-apple-yellow/20',
+    blurb: 'one bad listing — rest of the retailer is fine',
+  },
+};
+
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+function scoreColor(score: number): string {
+  if (score >= 85) return 'text-apple-green';
+  if (score >= 60) return 'text-apple-orange';
+  return 'text-apple-red';
+}
+
 const HEALTH_COLORS: Record<HealthLabel, string> = {
   healthy: 'text-apple-green bg-apple-green/10 border-apple-green/20',
   degraded: 'text-apple-orange bg-apple-orange/10 border-apple-orange/20',
@@ -131,6 +188,15 @@ export default function AdminLogs() {
     queryKey: ['scraper-health'],
     queryFn: async () => {
       const { data } = await api.get('/admin/scrapers/health', { params: { hours: 24 } });
+      return data;
+    },
+    refetchInterval: 60_000,
+  });
+
+  const { data: board } = useQuery<LeaderboardResponse>({
+    queryKey: ['scraper-leaderboard'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/scrapers/leaderboard', { params: { hours: 24 } });
       return data;
     },
     refetchInterval: 60_000,
@@ -241,6 +307,94 @@ export default function AdminLogs() {
           )
         )}
       </div>
+
+      {/* Outage detector — retailers failing right now, en masse vs isolated */}
+      {board && board.outages.length > 0 && (
+        <div className="card p-4 mb-6 border-apple-red/20">
+          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+            <h2 className="text-headline font-semibold text-dark-label1">
+              ⚠️ Outage detector · last {board.windowHours}h
+            </h2>
+            <span className="text-caption2 text-dark-label3">
+              en masse = whole scraper · isolated = one bad listing
+            </span>
+          </div>
+          <p className="text-caption1 text-dark-label2 mb-3">
+            Retailers with failing listings, ranked by how widespread the failure is. An outage usually means the
+            scraper is broken or the retailer is blocking us; an isolated flag is just a dead URL to deactivate.
+          </p>
+          <div className="space-y-1.5">
+            {board.outages.map((o) => {
+              const meta = OUTAGE_META[o.severity as Exclude<OutageSeverity, 'ok'>];
+              return (
+                <div key={o.storeSlug} className="flex items-center gap-3 px-3 py-2 rounded-apple bg-dark-surface2">
+                  <span className={clsx('text-caption2 font-bold px-2 py-0.5 rounded-pill border uppercase shrink-0', meta.color)}>
+                    {meta.label}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-footnote font-semibold text-dark-label1 truncate">{o.storeName}</p>
+                    <p className="text-caption2 text-dark-label3 truncate">
+                      {meta.blurb}
+                      {o.dominantFailureType && <> · mostly <span className="font-semibold">{o.dominantFailureType}</span></>}
+                    </p>
+                  </div>
+                  <span className="text-caption1 font-semibold text-dark-label2 shrink-0 tabular-nums">
+                    {o.listingsFailing}/{o.listingsTotal} listings
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Performance leaderboard — every retailer ranked best→worst */}
+      {board && board.leaderboard.length > 0 && (
+        <div className="card p-4 mb-6">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-headline font-semibold text-dark-label1">
+              🏆 Scraper leaderboard · last {board.windowHours}h
+            </h2>
+            <span className="text-caption2 text-dark-label3">
+              score = success rate weighted, speed as tie-break
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-footnote">
+              <thead>
+                <tr className="text-caption2 text-dark-label3 text-left">
+                  <th className="py-1.5 pr-3 font-medium">#</th>
+                  <th className="py-1.5 px-3 font-medium">Store</th>
+                  <th className="py-1.5 px-3 font-medium text-right">Score</th>
+                  <th className="py-1.5 px-3 font-medium text-right">Success</th>
+                  <th className="py-1.5 px-3 font-medium text-right">Checks</th>
+                  <th className="py-1.5 pl-3 font-medium text-right">Avg</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-separator">
+                {board.leaderboard.map((s) => (
+                  <tr key={s.storeSlug} className={clsx(!s.hasData && 'opacity-50')}>
+                    <td className="py-2 pr-3 text-dark-label2 tabular-nums">
+                      {s.hasData && s.rank <= 3 ? MEDALS[s.rank - 1] : s.rank}
+                    </td>
+                    <td className="py-2 px-3 text-dark-label1 font-medium">{s.storeName}</td>
+                    <td className={clsx('py-2 px-3 text-right tabular-nums font-bold', s.hasData ? scoreColor(s.score) : 'text-dark-label3')}>
+                      {s.hasData ? s.score : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-dark-label2">
+                      {s.successRate != null ? `${Math.round(s.successRate * 100)}%` : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-dark-label2">{s.total}</td>
+                    <td className="py-2 pl-3 text-right tabular-nums text-dark-label2">
+                      {s.avgDurationMs != null ? `${s.avgDurationMs}ms` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Per-retailer health — rolling window from logged scrape attempts */}
       {health && health.stores.length > 0 && (
