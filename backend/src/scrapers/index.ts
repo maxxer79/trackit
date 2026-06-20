@@ -46,7 +46,10 @@ class WithGenericFallback extends BaseScraper {
 // eBay has its own Puppeteer fallback and its URLs are search pages, which
 // the generic product-page detection doesn't understand)
 scraperRegistry.set('amazon', new WithGenericFallback('amazon', new AmazonScraper()));
-scraperRegistry.set('bestbuy', new WithGenericFallback('bestbuy', new BestBuyScraper()));
+// Best Buy has its own complete pipeline (render → mine SKU → priceBlocks API).
+// No generic fallback — it would just render the page a SECOND time and still
+// find nothing (button state loads via late XHR).
+scraperRegistry.set('bestbuy', new BestBuyScraper());
 scraperRegistry.set('walmart', new WithGenericFallback('walmart', new WalmartScraper()));
 // Target has its own complete pipeline (API → HTML → rendered) — the generic
 // fallback misread stray JSON in Target's page shell as out-of-stock

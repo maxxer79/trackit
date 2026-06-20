@@ -16,6 +16,8 @@ type Status = StockResult['status'];
  */
 export class BestBuyScraper extends BaseScraper {
   private session: SolverrSession | null = null;
+  // url → numeric SKU, so we only render-and-mine a no-SKU URL once.
+  private skuCache = new Map<string, string>();
 
   constructor() {
     super('bestbuy');
@@ -26,7 +28,8 @@ export class BestBuyScraper extends BaseScraper {
       (storeProductId && /^\d{7,8}$/.test(storeProductId) ? storeProductId : undefined) ||
       productUrl.match(/\/(\d{7,8})\.p/)?.[1] ||
       productUrl.match(/[?&]skuId=(\d+)/)?.[1] ||
-      productUrl.match(/\/sku\/(\d{5,9})(?:[/?#]|$)/)?.[1];
+      productUrl.match(/\/sku\/(\d{5,9})(?:[/?#]|$)/)?.[1] ||
+      this.skuCache.get(productUrl);
 
     // Fast-fail non-product URLs (homepage / search) — rendering bestbuy.com
     // just hangs and never yields a product signal.
@@ -34,18 +37,21 @@ export class BestBuyScraper extends BaseScraper {
       return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Not a Best Buy product URL (homepage or search page?)' };
     }
 
-    // 1. Authoritative priceBlocks API (plain → FlareSolverr-cookie replay).
+    // 1. Authoritative priceBlocks API. If we already know the SKU (from the URL
+    //    or the cache), this needs NO page render at all.
     if (sku) {
       const api = await this.checkViaApi(sku, productUrl);
       if (api.status !== 'UNKNOWN') return api;
     }
 
     // 2. Newer /product/{name}/{code} URLs carry no numeric SKU. Render the page
-    //    (gets past the bot wall), check for any embedded signal, and mine the
-    //    SKU so we can hit the API with it.
+    //    ONCE to mine + cache the SKU, then hit the API with it.
     const html = await fetchRenderedHtml(productUrl);
     if (html && !this.isBotBlocked(html)) {
-      if (!sku) sku = html.match(/"skuId"\s*:\s*"?(\d{6,8})"?/i)?.[1];
+      if (!sku) {
+        sku = this.mineSku(html);
+        if (sku) this.skuCache.set(productUrl, sku);
+      }
 
       // API is authoritative — try it BEFORE reading the page. Best Buy product
       // pages embed many OTHER products (related items, open-box), so a
@@ -69,6 +75,16 @@ export class BestBuyScraper extends BaseScraper {
       productUrl,
       message: html ? 'Best Buy page had no recognizable stock signal' : 'Best Buy render failed/blocked',
     };
+  }
+
+  // Mine the numeric SKU from the rendered page. Best Buy HTML-encodes the JSON
+  // in <meta> (e.g. &quot;skuId&quot;:&quot;6618904&quot;), so match both encoded
+  // and raw forms, plus the visible "SKU: 6618904".
+  private mineSku(html: string): string | undefined {
+    const m =
+      html.match(/skuId(?:&quot;|&#34;|["'])?\s*[:=]\s*(?:&quot;|&#34;|["'])?(\d{6,8})/i) ||
+      html.match(/\bSKU:?\s*(?:<[^>]*>\s*)?(\d{6,8})\b/i);
+    return m?.[1];
   }
 
   private async checkViaApi(sku: string, productUrl: string): Promise<StockResult> {
