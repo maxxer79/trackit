@@ -28,6 +28,23 @@ export class GenericScraper extends BaseScraper {
   }
 
   async checkStock(productUrl: string): Promise<StockResult> {
+    // Fast-fail bare-domain URLs (homepage/placeholder listings). A homepage has
+    // no product to read, so rendering it just wastes a fetch and returns a
+    // misleading "no signals" — flag it clearly instead.
+    try {
+      const u = new URL(productUrl);
+      if (u.pathname.replace(/\/+$/, '') === '' && !u.search) {
+        return {
+          storeSlug: this.storeSlug,
+          status: 'UNKNOWN',
+          productUrl,
+          message: 'Listing URL is a homepage, not a product page — fix or remove this listing',
+        };
+      }
+    } catch {
+      return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'Invalid listing URL' };
+    }
+
     let html: string | null = null;
     let plainFetchError: string | null = null;
 

@@ -47,13 +47,19 @@ export class BestBuyScraper extends BaseScraper {
     if (html && !this.isBotBlocked(html)) {
       if (!sku) sku = html.match(/"skuId"\s*:\s*"?(\d{6,8})"?/i)?.[1];
 
-      const embedded = this.detectFromHtml(html);
-      if (embedded !== 'UNKNOWN') {
-        return { storeSlug: this.storeSlug, status: embedded, price: this.priceFromHtml(html), productUrl };
-      }
+      // API is authoritative — try it BEFORE reading the page. Best Buy product
+      // pages embed many OTHER products (related items, open-box), so a
+      // whole-page scan can pick up a related item's "SOLD_OUT" and wrongly
+      // mark the main item out of stock.
       if (sku) {
         const api = await this.checkViaApi(sku, productUrl);
         if (api.status !== 'UNKNOWN') return api;
+      }
+
+      // Last resort: only a POSITIVE signal from the HTML is trustworthy here.
+      const embedded = this.detectFromHtml(html);
+      if (embedded !== 'UNKNOWN') {
+        return { storeSlug: this.storeSlug, status: embedded, price: this.priceFromHtml(html), productUrl };
       }
     }
 
@@ -82,7 +88,10 @@ export class BestBuyScraper extends BaseScraper {
     if (!data) return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl };
 
     const availability = data.sku?.buttonState?.buttonState;
-    const price = data.sku?.currentPrice?.currentPrice;
+    // Real path is sku.price.currentPrice; fall back to the priceDomain's
+    // customer price.
+    const rawPrice = data.sku?.price?.currentPrice ?? data.sku?.price?.priceDomain?.customerPrice;
+    const price = rawPrice != null ? Number(rawPrice) : undefined;
 
     if (!availability) return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl };
 
@@ -90,7 +99,7 @@ export class BestBuyScraper extends BaseScraper {
     if (availability === 'ADD_TO_CART' || availability === 'COMING_SOON_BUT_AVAILABLE') status = 'IN_STOCK';
     else if (availability === 'PRE_ORDER') status = 'PREORDER';
 
-    return { storeSlug: this.storeSlug, status, price: price ? parseFloat(price) : undefined, productUrl };
+    return { storeSlug: this.storeSlug, status, price: Number.isNaN(price as number) ? undefined : price, productUrl };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,19 +119,14 @@ export class BestBuyScraper extends BaseScraper {
     return null;
   }
 
-  // Best Buy SSR occasionally embeds availability in hydration JSON.
+  // Best Buy product pages embed many products' states, so only a POSITIVE
+  // signal is trustworthy from a whole-page scan — never infer OUT_OF_STOCK here
+  // (a related/open-box item's SOLD_OUT would poison the main item). When the
+  // API can't be reached and the page shows no positive signal, return UNKNOWN
+  // (which safely keeps the previous value) rather than guessing out-of-stock.
   private detectFromHtml(html: string): Status {
-    if (
-      /"buttonState"\s*:\s*"ADD_TO_CART"/i.test(html) ||
-      /"availability"\s*:\s*"(?:https?:\/\/schema\.org\/)?InStock"/i.test(html)
-    )
-      return 'IN_STOCK';
+    if (/"buttonState"\s*:\s*"ADD_TO_CART"/i.test(html)) return 'IN_STOCK';
     if (/"buttonState"\s*:\s*"PRE_ORDER"/i.test(html)) return 'PREORDER';
-    if (
-      /"buttonState"\s*:\s*"SOLD_OUT"/i.test(html) ||
-      /"availability"\s*:\s*"(?:https?:\/\/schema\.org\/)?OutOfStock"/i.test(html)
-    )
-      return 'OUT_OF_STOCK';
     return 'UNKNOWN';
   }
 
