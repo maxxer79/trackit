@@ -5,6 +5,7 @@ import { isInStock, stockEventChanged } from '../scrapers/stockState';
 import { isPriceDrop } from '../services/priceDrop';
 import { sendNotifications } from '../services/notifications';
 import { passesAlertRules } from '../services/alertRules';
+import { shouldNotifyPickup } from '../services/pickup';
 import { captureScreenshot, screenshotEnabled } from '../services/screenshot';
 import { ScraperError } from '../errors';
 import { evaluateStaleness } from './workerHealth';
@@ -151,6 +152,14 @@ stockCheckerQueue.process(
           // (predicate extracted to scrapers/stockState.ts and unit-tested)
           const isNowInStock = isInStock(result.status);
 
+          // Previous in-store pickup state (tri-state) for transition detection,
+          // captured before the update overwrites it. result.pickupAvailable is
+          // undefined when the scraper didn't determine pickup — keep the prior
+          // value in that case rather than clobbering it to null.
+          const prevPickup = (listing as { pickupAvailable?: boolean | null }).pickupAvailable ?? null;
+          const nextPickup = result.pickupAvailable ?? prevPickup;
+          const nextPickupLocation = result.pickupLocation ?? (listing as { pickupLocation?: string | null }).pickupLocation ?? null;
+
           // Update store listing with latest stock info. `listing` still holds
           // the PREVIOUS values in memory (the update mutates the DB row, not
           // this object), so we can diff against it just below.
@@ -160,6 +169,8 @@ stockCheckerQueue.process(
               inStock: isNowInStock,
               stockStatus: result.status,
               price: result.price ?? listing.price,
+              pickupAvailable: nextPickup,
+              pickupLocation: nextPickupLocation,
               lastChecked: new Date(),
               checkCount: { increment: 1 },
               failStreak: 0,
@@ -430,6 +441,70 @@ stockCheckerQueue.process(
                   price: result.price,
                   status: result.status,
                   kind: 'LOW_STOCK',
+                });
+              }
+            }
+          }
+
+          // In-store pickup alerts (opt-in): fire when a listing transitions
+          // from confirmed-no-pickup to pickup-available. Independent of online
+          // stock — pickup can open up while ship-to-home is still sold out.
+          // Gated on the user having pickup alerts on AND a saved home ZIP.
+          if (shouldNotifyPickup(prevPickup, result.pickupAvailable)) {
+            const pickupTrackers = await prisma.tracking.findMany({
+              where: {
+                productId: product.id,
+                isActive: true,
+                user: { notifyPickup: true, pickupZip: { not: null } },
+                OR: [{ watchStores: { isEmpty: true } }, { watchStores: { has: storeSlug } }],
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true, email: true, name: true, emailAlerts: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true,
+                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
+                  },
+                },
+              },
+            });
+
+            if (pickupTrackers.length > 0) {
+              logger.info('in-store pickup available — notifying trackers', {
+                ...ctx,
+                pickupLocation: nextPickupLocation,
+                trackerCount: pickupTrackers.length,
+              });
+
+              for (const tracker of pickupTrackers) {
+                if (
+                  !passesAlertRules(
+                    {
+                      alertMaxPrice: tracker.alertMaxPrice != null ? Number(tracker.alertMaxPrice) : null,
+                      alertDays: tracker.alertDays,
+                      mutedUntil: tracker.mutedUntil,
+                    },
+                    { price: result.price ?? null, timezone: tracker.user.timezone }
+                  )
+                ) {
+                  continue;
+                }
+                await sendNotifications({
+                  user: {
+                    ...tracker.user,
+                    notifyEmail: tracker.user.emailAlerts && tracker.notifyEmail,
+                    notifyPush: tracker.user.pushAlerts && tracker.notifyPush,
+                    autoBuyEnabled: tracker.user.autoBuyEnabled,
+                  },
+                  product,
+                  storeSlug,
+                  storeName: listing.store.name,
+                  productUrl: result.productUrl ?? listing.url,
+                  price: result.price,
+                  status: result.status,
+                  kind: 'PICKUP',
+                  pickupLocation: nextPickupLocation ?? undefined,
                 });
               }
             }

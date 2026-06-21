@@ -52,9 +52,12 @@ interface NotificationPayload {
   status: string;
   autoBuyEnabled?: boolean;
   autoBuyMaxPrice?: number;
-  // 'PRICE_DROP' / 'LOW_STOCK' reuse this whole pipeline with flavored messaging.
-  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
+  // 'PRICE_DROP' / 'LOW_STOCK' / 'PICKUP' reuse this whole pipeline with flavored
+  // messaging. PICKUP only fans out to push + email + the in-app alert.
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP';
   previousPrice?: number | null;
+  // In-store pickup location (store name/city) for PICKUP alerts.
+  pickupLocation?: string | null;
   // Restock-proof screenshot filename (captured once per restock, shared across
   // all trackers notified for that event).
   screenshotPath?: string | null;
@@ -106,12 +109,13 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         status,
         kind,
         previousPrice,
+        pickupLocation: payload.pickupLocation,
       }).catch((err) => logChannelFailure('email', user.id, product.slug, err))
     );
   }
 
-  // SMS notification
-  if (!quiet && user.notifySms && user.phoneNumber) {
+  // SMS notification — pickup alerts go to push + email + in-app only.
+  if (!quiet && kind !== 'PICKUP' && user.notifySms && user.phoneNumber) {
     results.push(
       sendSmsAlert({
         to: user.phoneNumber,
@@ -139,12 +143,13 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productSlug: product.slug,
         kind,
         previousPrice,
+        pickupLocation: payload.pickupLocation,
       }).catch((err) => logChannelFailure('push', user.id, product.slug, err))
     );
   }
 
-  // Discord webhook notification
-  if (!quiet && user.notifyDiscord && user.discordWebhook) {
+  // Discord webhook notification — pickup alerts go to push + email + in-app only.
+  if (!quiet && kind !== 'PICKUP' && user.notifyDiscord && user.discordWebhook) {
     results.push(
       sendDiscordAlert({
         webhookUrl: user.discordWebhook,
@@ -170,7 +175,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productId: product.id,
         storeSlug: payload.storeSlug,
         storeName,
-        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : kind === 'LOW_STOCK' ? 'LOW_STOCK' : 'IN_STOCK',
+        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : kind === 'LOW_STOCK' ? 'LOW_STOCK' : kind === 'PICKUP' ? 'PICKUP' : 'IN_STOCK',
         status: status as any,
         price,
         productUrl,

@@ -18,12 +18,13 @@ interface PushPayload {
   price?: number | null;
   status: string;
   productSlug: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP';
   previousPrice?: number | null;
+  pickupLocation?: string | null;
 }
 
 export async function sendPushAlert(payload: PushPayload): Promise<void> {
-  const { userId, productName, storeName, productUrl, price, status, productSlug, kind, previousPrice } = payload;
+  const { userId, productName, storeName, productUrl, price, status, productSlug, kind, previousPrice, pickupLocation } = payload;
 
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
     console.warn('⚠️ VAPID keys not configured, skipping push notifications');
@@ -39,19 +40,25 @@ export async function sendPushAlert(payload: PushPayload): Promise<void> {
   const priceStr = price ? ` — $${price.toFixed(2)}` : '';
   const isDrop = kind === 'PRICE_DROP';
   const isLow = kind === 'LOW_STOCK';
+  const isPickup = kind === 'PICKUP';
   const statusLabel = status === 'LIMITED' ? 'Limited Stock' : status === 'PREORDER' ? 'Pre-order Available' : 'In Stock';
   const wasStr = previousPrice ? ` (was $${previousPrice.toFixed(2)})` : '';
-  const title = isDrop
-    ? `💸 Price drop: ${productName}`
-    : isLow
-      ? `⚠️ ${productName} is running low`
-      : `🟢 ${productName} is ${statusLabel}!`;
-  const body = isDrop
-    ? `Now $${price?.toFixed(2) ?? '?'}${wasStr} at ${storeName}. Tap to shop.`
-    : isLow
-      ? `Limited stock at ${storeName}${priceStr}. Grab it before it sells out.`
-      : `Available at ${storeName}${priceStr}. Tap to shop now.`;
-  const tagPrefix = isDrop ? 'pricedrop' : isLow ? 'lowstock' : 'stock';
+  const pickupAt = pickupLocation ? `${storeName} (${pickupLocation})` : storeName;
+  const title = isPickup
+    ? `🏪 ${productName} ready for pickup`
+    : isDrop
+      ? `💸 Price drop: ${productName}`
+      : isLow
+        ? `⚠️ ${productName} is running low`
+        : `🟢 ${productName} is ${statusLabel}!`;
+  const body = isPickup
+    ? `Available for in-store pickup at ${pickupAt}${priceStr}. Tap to reserve.`
+    : isDrop
+      ? `Now $${price?.toFixed(2) ?? '?'}${wasStr} at ${storeName}. Tap to shop.`
+      : isLow
+        ? `Limited stock at ${storeName}${priceStr}. Grab it before it sells out.`
+        : `Available at ${storeName}${priceStr}. Tap to shop now.`;
+  const tagPrefix = isPickup ? 'pickup' : isDrop ? 'pricedrop' : isLow ? 'lowstock' : 'stock';
 
   const notification = JSON.stringify({
     title,

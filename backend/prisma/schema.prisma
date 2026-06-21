@@ -32,6 +32,10 @@ model User {
   phoneNumber    String?
   discordWebhook String?
   autoBuyEnabled Boolean   @default(false)
+  // In-store pickup alerts: one home ZIP used as the pickup location for all of
+  // the user's tracked items, plus the master on/off switch for pickup alerts.
+  pickupZip      String?
+  notifyPickup   Boolean   @default(false)
   avatar         String?
   isActive       Boolean   @default(true)
   lastLoginAt    DateTime?
@@ -150,6 +154,10 @@ model StoreProduct {
   stockStatus String?   // IN_STOCK | OUT_OF_STOCK | PREORDER | LIMITED | UNKNOWN
   condition   String    @default("NEW") // NEW | OPEN_BOX | USED | REFURBISHED
   stockLevel  Int?
+  // In-store pickup signal a scraper may populate. null = unknown / not parsed
+  // for this retailer; never used to flip online stockStatus.
+  pickupAvailable Boolean?
+  pickupLocation  String?
   isActive    Boolean   @default(true)
   lastChecked DateTime?
   checkCount  Int       @default(0)

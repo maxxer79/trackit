@@ -13,6 +13,8 @@ interface NotifPrefs {
   discordEnabled: boolean;
   priceDropEnabled: boolean;
   lowStockEnabled: boolean;
+  pickupEnabled: boolean;
+  pickupZip: string | null;
   quietHoursEnabled: boolean;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
@@ -380,6 +382,31 @@ export default function SettingsPage() {
               checked={form.lowStockEnabled ?? false}
               onChange={(v) => handleChange('lowStockEnabled', v)}
             />
+
+            {/* In-store pickup */}
+            <ToggleRow
+              icon="🏪"
+              label="In-Store Pickup Alerts"
+              description="Get notified when a tracked item becomes available for local store pickup (push + email). Supported where the retailer reports pickup."
+              checked={form.pickupEnabled ?? false}
+              onChange={(v) => handleChange('pickupEnabled', v)}
+            />
+            {form.pickupEnabled && (
+              <div className="pl-1 pt-1">
+                <label className="text-footnote text-dark-label2 block mb-1.5">Home ZIP for pickup</label>
+                <input
+                  value={form.pickupZip ?? ''}
+                  onChange={(e) => handleChange('pickupZip', e.target.value)}
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="e.g. 94117"
+                  className="input text-sm max-w-[180px]"
+                />
+                {form.pickupZip && !/^\d{5}(-\d{4})?$/.test(form.pickupZip.trim()) && (
+                  <p className="text-caption2 text-apple-orange mt-1.5">Enter a valid 5-digit ZIP (pickup alerts need a ZIP to send).</p>
+                )}
+              </div>
+            )}
           </div>
         </motion.div>
 

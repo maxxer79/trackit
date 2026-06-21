@@ -35,4 +35,13 @@ export interface StockResult {
   originalPrice?: number;
   productUrl: string;
   message?: string;
+  /**
+   * In-store pickup signal, populated only by scrapers that can resolve it
+   * (e.g. Home Depot fulfillment). `undefined` = the scraper didn't determine
+   * pickup for this listing — it must never be treated as "unavailable" or used
+   * to flip online stock state.
+   */
+  pickupAvailable?: boolean;
+  /** Human-readable pickup location (store name/city) when known. */
+  pickupLocation?: string;
 }

@@ -8,8 +8,9 @@ interface EmailPayload {
   productUrl: string;
   price?: number | null;
   status: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP';
   previousPrice?: number | null;
+  pickupLocation?: string | null;
 }
 
 function createTransporter() {
@@ -51,7 +52,7 @@ function statusLabel(status: string): string {
 }
 
 export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
-  const { to, name, productName, storeName, productUrl, price, status, kind, previousPrice } = payload;
+  const { to, name, productName, storeName, productUrl, price, status, kind, previousPrice, pickupLocation } = payload;
 
   const transporter = createTransporter();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'alerts@trackit.app';
@@ -60,12 +61,18 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
 
   const isDrop = kind === 'PRICE_DROP';
   const isLow = kind === 'LOW_STOCK';
-  const subtitle = isDrop ? 'Price Drop Alert' : isLow ? 'Low Stock Alert' : 'Stock Alert Notification';
-  const headline = isDrop
-    ? `Good news — the price just dropped on an item you're tracking.`
-    : isLow
-      ? `Heads up — an item you're tracking is <strong style="color:#ff9f0a;">running low</strong>. Grab it before it sells out.`
-      : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
+  const isPickup = kind === 'PICKUP';
+  const pickupAt = pickupLocation ? `${storeName} (${pickupLocation})` : storeName;
+  const subtitle = isPickup
+    ? 'In-Store Pickup Alert'
+    : isDrop ? 'Price Drop Alert' : isLow ? 'Low Stock Alert' : 'Stock Alert Notification';
+  const headline = isPickup
+    ? `An item you're tracking is now <strong style="color:#30d158;">available for in-store pickup</strong> at ${pickupAt}.`
+    : isDrop
+      ? `Good news — the price just dropped on an item you're tracking.`
+      : isLow
+        ? `Heads up — an item you're tracking is <strong style="color:#ff9f0a;">running low</strong>. Grab it before it sells out.`
+        : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
   const priceCardHtml = isDrop
     ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price?.toFixed(2) ?? '?'}${
         previousPrice
@@ -75,11 +82,13 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
     : price
       ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price.toFixed(2)}</div>`
       : '';
-  const subject = isDrop
-    ? `💸 Price drop: ${productName} now $${price?.toFixed(2) ?? ''} at ${storeName}`
-    : isLow
-      ? `⚠️ ${productName} is running low at ${storeName}${priceStr}`
-      : `🟢 ${productName} is ${statusStr} at ${storeName}${priceStr}`;
+  const subject = isPickup
+    ? `🏪 ${productName} ready for in-store pickup at ${storeName}`
+    : isDrop
+      ? `💸 Price drop: ${productName} now $${price?.toFixed(2) ?? ''} at ${storeName}`
+      : isLow
+        ? `⚠️ ${productName} is running low at ${storeName}${priceStr}`
+        : `🟢 ${productName} is ${statusStr} at ${storeName}${priceStr}`;
 
   const html = `
 <!DOCTYPE html>
@@ -112,7 +121,7 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
               <!-- Product Card -->
               <div style="background:#2c2c2e;border-radius:12px;padding:24px;margin-bottom:28px;">
                 <div style="font-size:20px;font-weight:600;color:#fff;margin-bottom:8px;">${productName}</div>
-                <div style="font-size:14px;color:#8e8e93;margin-bottom:16px;">Available at <strong style="color:#ebebf5;">${storeName}</strong></div>
+                <div style="font-size:14px;color:#8e8e93;margin-bottom:16px;">${isPickup ? 'Pickup at' : 'Available at'} <strong style="color:#ebebf5;">${isPickup ? pickupAt : storeName}</strong></div>
                 ${priceCardHtml}
               </div>
 

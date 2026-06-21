@@ -426,6 +426,14 @@ export default function ProductPage() {
                         {conditionLabel(s.condition)}
                       </span>
                     )}
+                    {s.pickupAvailable === true && (
+                      <span
+                        className="text-caption2 px-1.5 py-0.5 rounded-pill border font-medium text-apple-green border-apple-green/20 bg-apple-green/10"
+                        title={s.pickupLocation ? `In-store pickup at ${s.pickupLocation}` : 'Available for in-store pickup'}
+                      >
+                        🏪 Pickup
+                      </span>
+                    )}
                     {isSearchLink && (
                       <span className="text-caption2 text-dark-label3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                         <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

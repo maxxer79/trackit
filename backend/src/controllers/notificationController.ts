@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 import logger from '../utils/logger';
+import { normalizeZip } from '../services/pickup';
 
 export const getNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -179,6 +180,8 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         phoneNumber: true,
         discordWebhook: true,
         autoBuyEnabled: true,
+        notifyPickup: true,
+        pickupZip: true,
       },
     });
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
@@ -191,6 +194,8 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         discordEnabled: user.notifyDiscord,
         priceDropEnabled: user.notifyPriceDrop,
         lowStockEnabled: user.notifyLowStock,
+        pickupEnabled: user.notifyPickup,
+        pickupZip: user.pickupZip,
         quietHoursEnabled: user.quietHoursEnabled,
         quietHoursStart: user.quietHoursStart,
         quietHoursEnd: user.quietHoursEnd,
@@ -216,6 +221,7 @@ export const updatePreferences = async (req: AuthRequest, res: Response): Promis
   try {
     const {
       emailEnabled, smsEnabled, pushEnabled, discordEnabled, priceDropEnabled, lowStockEnabled,
+      pickupEnabled, pickupZip,
       quietHoursEnabled, quietHoursStart, quietHoursEnd, timezone,
       phone, discordWebhook, autoBuyEnabled,
     } = req.body;
@@ -227,6 +233,9 @@ export const updatePreferences = async (req: AuthRequest, res: Response): Promis
     if (discordEnabled !== undefined) data.notifyDiscord = !!discordEnabled;
     if (priceDropEnabled !== undefined) data.notifyPriceDrop = !!priceDropEnabled;
     if (lowStockEnabled !== undefined) data.notifyLowStock = !!lowStockEnabled;
+    if (pickupEnabled !== undefined) data.notifyPickup = !!pickupEnabled;
+    // Home ZIP for pickup alerts — normalize/validate; blank clears it.
+    if (pickupZip !== undefined) data.pickupZip = normalizeZip(pickupZip);
     if (quietHoursEnabled !== undefined) data.quietHoursEnabled = !!quietHoursEnabled;
     if (quietHoursStart !== undefined) data.quietHoursStart = quietHoursStart;
     if (quietHoursEnd !== undefined) data.quietHoursEnd = quietHoursEnd;

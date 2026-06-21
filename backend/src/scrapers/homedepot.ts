@@ -136,10 +136,16 @@ export class HomeDepotScraper extends BaseScraper {
       const options: any[] = product?.fulfillment?.fulfillmentOptions ?? [];
 
       // In stock if ANY fulfillment option (ship-to-home or pickup) is
-      // fulfillable with positive inventory
+      // fulfillable with positive inventory. Separately track whether the
+      // PICKUP option specifically is available, plus its store location, for
+      // in-store pickup alerts.
       let inStock = false;
       let limited = false;
+      let pickupAvailable = false;
+      let pickupLocation: string | undefined;
       for (const opt of options) {
+        // HD fulfillment option types: "pickup" (BOPIS) vs "delivery"/"ship".
+        const isPickup = String(opt?.type ?? '').toLowerCase().includes('pickup');
         if (opt?.fulfillable) {
           for (const svc of opt?.services ?? []) {
             for (const loc of svc?.locations ?? []) {
@@ -147,6 +153,10 @@ export class HomeDepotScraper extends BaseScraper {
               if (inv?.isInStock === true || (typeof inv?.quantity === 'number' && inv.quantity > 0)) {
                 inStock = true;
                 if (inv?.isLimitedQuantity) limited = true;
+                if (isPickup) {
+                  pickupAvailable = true;
+                  pickupLocation = pickupLocation ?? loc?.storeName ?? loc?.locationName ?? undefined;
+                }
               }
             }
           }
@@ -165,6 +175,10 @@ export class HomeDepotScraper extends BaseScraper {
         status,
         price: typeof price === 'number' ? price : undefined,
         productUrl,
+        // Only assert pickup state when we actually parsed fulfillment options;
+        // an empty/failed response leaves it undefined (unknown), never false.
+        pickupAvailable: options.length > 0 ? pickupAvailable : undefined,
+        pickupLocation,
       };
     } catch (err: any) {
       const code = err?.response?.status;
