@@ -177,11 +177,37 @@ export class TargetScraper extends BaseScraper {
       return null;
     }
 
+    // In-store pickup signal. store_options only appears in the fulfillment_v1
+    // response and reflects Target's DEFAULT fulfillment store (store_id 3991,
+    // Minneapolis — see fulfillmentUrl), NOT the user's ZIP. We surface the
+    // store's location_name so any pickup alert makes clear WHICH store it is.
+    // When store_options is absent (e.g. client_v1) leave pickup undefined
+    // (unknown) rather than asserting it's unavailable.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const storeOptions: any[] = Array.isArray(fulfillment?.store_options) ? fulfillment.store_options : [];
+    let pickupAvailable: boolean | undefined;
+    let pickupLocation: string | undefined;
+    if (storeOptions.length > 0) {
+      pickupAvailable = false;
+      for (const so of storeOptions) {
+        const ok =
+          so?.order_pickup?.availability_status === 'IN_STOCK' ||
+          so?.curbside?.availability_status === 'IN_STOCK' ||
+          so?.in_store_only?.availability_status === 'IN_STOCK';
+        if (ok) {
+          pickupAvailable = true;
+          pickupLocation = pickupLocation ?? so?.location_name ?? undefined;
+        }
+      }
+    }
+
     return {
       storeSlug: this.storeSlug,
       status,
       price: price ? parseFloat(price) : undefined,
       productUrl,
+      pickupAvailable,
+      pickupLocation,
     };
   }
 
