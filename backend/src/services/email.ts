@@ -8,9 +8,10 @@ interface EmailPayload {
   productUrl: string;
   price?: number | null;
   status: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP' | 'PRICE_TARGET';
   previousPrice?: number | null;
   pickupLocation?: string | null;
+  targetPrice?: number | null;
 }
 
 function createTransporter() {
@@ -52,7 +53,7 @@ function statusLabel(status: string): string {
 }
 
 export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
-  const { to, name, productName, storeName, productUrl, price, status, kind, previousPrice, pickupLocation } = payload;
+  const { to, name, productName, storeName, productUrl, price, status, kind, previousPrice, pickupLocation, targetPrice } = payload;
 
   const transporter = createTransporter();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'alerts@trackit.app';
@@ -62,17 +63,23 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
   const isDrop = kind === 'PRICE_DROP';
   const isLow = kind === 'LOW_STOCK';
   const isPickup = kind === 'PICKUP';
+  const isTarget = kind === 'PRICE_TARGET';
   const pickupAt = pickupLocation ? `${storeName} (${pickupLocation})` : storeName;
-  const subtitle = isPickup
-    ? 'In-Store Pickup Alert'
-    : isDrop ? 'Price Drop Alert' : isLow ? 'Low Stock Alert' : 'Stock Alert Notification';
-  const headline = isPickup
-    ? `An item you're tracking is now <strong style="color:#30d158;">available for in-store pickup</strong> at ${pickupAt}.`
-    : isDrop
-      ? `Good news — the price just dropped on an item you're tracking.`
-      : isLow
-        ? `Heads up — an item you're tracking is <strong style="color:#ff9f0a;">running low</strong>. Grab it before it sells out.`
-        : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
+  const targetStr = targetPrice ? ` (your target was $${targetPrice.toFixed(2)})` : '';
+  const subtitle = isTarget
+    ? 'Price Target Hit'
+    : isPickup
+      ? 'In-Store Pickup Alert'
+      : isDrop ? 'Price Drop Alert' : isLow ? 'Low Stock Alert' : 'Stock Alert Notification';
+  const headline = isTarget
+    ? `🎯 An item you're tracking just hit your target price — now <strong style="color:#30d158;">$${price?.toFixed(2) ?? '?'}</strong>${targetStr} at ${storeName}.`
+    : isPickup
+      ? `An item you're tracking is now <strong style="color:#30d158;">available for in-store pickup</strong> at ${pickupAt}.`
+      : isDrop
+        ? `Good news — the price just dropped on an item you're tracking.`
+        : isLow
+          ? `Heads up — an item you're tracking is <strong style="color:#ff9f0a;">running low</strong>. Grab it before it sells out.`
+          : `Great news! An item you're tracking is now <strong style="color:#30d158;">${statusStr}</strong>.`;
   const priceCardHtml = isDrop
     ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price?.toFixed(2) ?? '?'}${
         previousPrice
@@ -82,7 +89,9 @@ export async function sendEmailAlert(payload: EmailPayload): Promise<void> {
     : price
       ? `<div style="font-size:24px;font-weight:700;color:#0071e3;">$${price.toFixed(2)}</div>`
       : '';
-  const subject = isPickup
+  const subject = isTarget
+    ? `🎯 ${productName} hit your target — $${price?.toFixed(2) ?? ''} at ${storeName}`
+    : isPickup
     ? `🏪 ${productName} ready for in-store pickup at ${storeName}`
     : isDrop
       ? `💸 Price drop: ${productName} now $${price?.toFixed(2) ?? ''} at ${storeName}`

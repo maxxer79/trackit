@@ -158,6 +158,9 @@ model StoreProduct {
   // for this retailer; never used to flip online stockStatus.
   pickupAvailable Boolean?
   pickupLocation  String?
+  // Lowest price ever observed for this listing (Price Target Watch).
+  lowestPrice     Float?
+  lowestPriceAt   DateTime?
   isActive    Boolean   @default(true)
   lastChecked DateTime?
   checkCount  Int       @default(0)
@@ -187,7 +190,8 @@ model Tracking {
   watchStores     String[]
   note            String?
   tags            String[]
-  alertMaxPrice   Decimal?
+  alertMaxPrice   Decimal? // ceiling that GATES other alerts (don't ping above this)
+  priceTarget     Decimal? // Price Target Watch: alert when price drops to/below this
   alertDays       Int[]
   mutedUntil      DateTime? // silent mode: suppress alerts until this time (tracking continues)
   archivedAt      DateTime? // hidden from the main dashboard; restorable
@@ -339,4 +343,5 @@ enum AlertType {
   OUT_OF_STOCK
   LOW_STOCK
   PICKUP
+  PRICE_TARGET
 }

@@ -223,6 +223,7 @@ export function useUpdateTracking() {
       note,
       tags,
       alertMaxPrice,
+      priceTarget,
       alertDays,
       mutedUntil,
       archivedAt,
@@ -236,6 +237,7 @@ export function useUpdateTracking() {
       note?: string | null;
       tags?: string[];
       alertMaxPrice?: number | null;
+      priceTarget?: number | null;
       alertDays?: number[];
       mutedUntil?: string | null;
       archivedAt?: string | null;
@@ -249,6 +251,7 @@ export function useUpdateTracking() {
         note,
         tags,
         alertMaxPrice,
+        priceTarget,
         alertDays,
         mutedUntil,
         archivedAt,

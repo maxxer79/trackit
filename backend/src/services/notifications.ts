@@ -52,12 +52,15 @@ interface NotificationPayload {
   status: string;
   autoBuyEnabled?: boolean;
   autoBuyMaxPrice?: number;
-  // 'PRICE_DROP' / 'LOW_STOCK' / 'PICKUP' reuse this whole pipeline with flavored
-  // messaging. PICKUP only fans out to push + email + the in-app alert.
-  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP';
+  // 'PRICE_DROP' / 'LOW_STOCK' / 'PICKUP' / 'PRICE_TARGET' reuse this whole
+  // pipeline with flavored messaging. PICKUP only fans out to push + email + the
+  // in-app alert; the rest use all enabled channels.
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP' | 'PRICE_TARGET';
   previousPrice?: number | null;
   // In-store pickup location (store name/city) for PICKUP alerts.
   pickupLocation?: string | null;
+  // The user's target price for PRICE_TARGET alerts.
+  targetPrice?: number | null;
   // Restock-proof screenshot filename (captured once per restock, shared across
   // all trackers notified for that event).
   screenshotPath?: string | null;
@@ -110,6 +113,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         kind,
         previousPrice,
         pickupLocation: payload.pickupLocation,
+        targetPrice: payload.targetPrice,
       }).catch((err) => logChannelFailure('email', user.id, product.slug, err))
     );
   }
@@ -126,6 +130,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         status,
         kind,
         previousPrice,
+        targetPrice: payload.targetPrice,
       }).catch((err) => logChannelFailure('sms', user.id, product.slug, err))
     );
   }
@@ -144,6 +149,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         kind,
         previousPrice,
         pickupLocation: payload.pickupLocation,
+        targetPrice: payload.targetPrice,
       }).catch((err) => logChannelFailure('push', user.id, product.slug, err))
     );
   }
@@ -160,6 +166,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         status,
         kind,
         previousPrice,
+        targetPrice: payload.targetPrice,
       }).catch((err) => logChannelFailure('discord', user.id, product.slug, err))
     );
   }
@@ -175,7 +182,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         productId: product.id,
         storeSlug: payload.storeSlug,
         storeName,
-        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : kind === 'LOW_STOCK' ? 'LOW_STOCK' : kind === 'PICKUP' ? 'PICKUP' : 'IN_STOCK',
+        type: kind === 'PRICE_DROP' ? 'PRICE_DROP' : kind === 'LOW_STOCK' ? 'LOW_STOCK' : kind === 'PICKUP' ? 'PICKUP' : kind === 'PRICE_TARGET' ? 'PRICE_TARGET' : 'IN_STOCK',
         status: status as any,
         price,
         productUrl,

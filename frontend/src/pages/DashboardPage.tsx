@@ -365,7 +365,7 @@ export default function DashboardPage() {
                     <ItemNotesTags productId={item.product.id} note={item.note} tags={item.tags} />
 
                     {/* Per-item advanced alert rules */}
-                    <ItemAlertRules productId={item.product.id} alertMaxPrice={item.alertMaxPrice} alertDays={item.alertDays} />
+                    <ItemAlertRules productId={item.product.id} alertMaxPrice={item.alertMaxPrice} priceTarget={item.priceTarget} alertDays={item.alertDays} />
 
                     {/* Mark as purchased → delivery tracking */}
                     <MarkPurchased productId={item.product.id} defaultPrice={lowestPrice} />

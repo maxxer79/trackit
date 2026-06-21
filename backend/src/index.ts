@@ -161,6 +161,11 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "pickupAvailable" BOOLEAN');
     await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "pickupLocation" TEXT');
     await prisma.$executeRawUnsafe(`ALTER TYPE "AlertType" ADD VALUE IF NOT EXISTS 'PICKUP'`);
+    // Price Target Watch (v1.4.124)
+    await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "priceTarget" DECIMAL');
+    await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "lowestPrice" DOUBLE PRECISION');
+    await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "lowestPriceAt" TIMESTAMP(3)');
+    await prisma.$executeRawUnsafe(`ALTER TYPE "AlertType" ADD VALUE IF NOT EXISTS 'PRICE_TARGET'`);
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertMaxPrice" DECIMAL');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "mutedUntil" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)');

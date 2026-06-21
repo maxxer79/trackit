@@ -14,6 +14,7 @@ const RegisterPage   = lazy(() => import('./pages/RegisterPage'));
 const BrowsePage     = lazy(() => import('./pages/BrowsePage'));
 const ProductPage    = lazy(() => import('./pages/ProductPage'));
 const DashboardPage  = lazy(() => import('./pages/DashboardPage'));
+const PriceWatchPage = lazy(() => import('./pages/PriceWatchPage'));
 const AlertsPage     = lazy(() => import('./pages/AlertsPage'));
 const PurchasesPage  = lazy(() => import('./pages/PurchasesPage'));
 const SettingsPage   = lazy(() => import('./pages/SettingsPage'));
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/browse"         element={<BrowsePage />} />
           <Route path="/product/:slug"  element={<ProductPage />} />
           <Route path="/dashboard"      element={<RequireAuth><DashboardPage /></RequireAuth>} />
+          <Route path="/price-watch"    element={<RequireAuth><PriceWatchPage /></RequireAuth>} />
           <Route path="/alerts"         element={<RequireAuth><AlertsPage /></RequireAuth>} />
           <Route path="/purchases"      element={<RequireAuth><PurchasesPage /></RequireAuth>} />
           <Route path="/settings"       element={<RequireAuth><SettingsPage /></RequireAuth>} />

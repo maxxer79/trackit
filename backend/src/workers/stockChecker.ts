@@ -6,6 +6,7 @@ import { isPriceDrop } from '../services/priceDrop';
 import { sendNotifications } from '../services/notifications';
 import { passesAlertRules } from '../services/alertRules';
 import { shouldNotifyPickup } from '../services/pickup';
+import { crossedPriceTarget, isNewLow } from '../services/priceTarget';
 import { captureScreenshot, screenshotEnabled } from '../services/screenshot';
 import { ScraperError } from '../errors';
 import { evaluateStaleness } from './workerHealth';
@@ -160,6 +161,11 @@ stockCheckerQueue.process(
           const nextPickup = result.pickupAvailable ?? prevPickup;
           const nextPickupLocation = result.pickupLocation ?? (listing as { pickupLocation?: string | null }).pickupLocation ?? null;
 
+          // Lowest-price-ever tracking (Price Target Watch). Only write when the
+          // new price is a genuine new low so the timestamp marks the real event.
+          const prevLowest = (listing as { lowestPrice?: number | null }).lowestPrice ?? null;
+          const newLow = isNewLow(prevLowest, result.price ?? null);
+
           // Update store listing with latest stock info. `listing` still holds
           // the PREVIOUS values in memory (the update mutates the DB row, not
           // this object), so we can diff against it just below.
@@ -171,6 +177,7 @@ stockCheckerQueue.process(
               price: result.price ?? listing.price,
               pickupAvailable: nextPickup,
               pickupLocation: nextPickupLocation,
+              ...(newLow ? { lowestPrice: result.price, lowestPriceAt: new Date() } : {}),
               lastChecked: new Date(),
               checkCount: { increment: 1 },
               failStreak: 0,
@@ -507,6 +514,68 @@ stockCheckerQueue.process(
                   pickupLocation: nextPickupLocation ?? undefined,
                 });
               }
+            }
+          }
+
+          // Price Target Watch (opt-in, per item): fire when a buyable listing's
+          // price crosses DOWN to/below a tracker's target. Independent of the
+          // restock/price-drop blocks; the threshold is per-user so each tracker
+          // is evaluated against the same prev→new price move.
+          if (isInStock(result.status) && result.price != null) {
+            const targetTrackers = await prisma.tracking.findMany({
+              where: {
+                productId: product.id,
+                isActive: true,
+                priceTarget: { not: null },
+                OR: [{ watchStores: { isEmpty: true } }, { watchStores: { has: storeSlug } }],
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true, email: true, name: true, emailAlerts: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true,
+                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
+                  },
+                },
+              },
+            });
+
+            for (const tracker of targetTrackers) {
+              const target = tracker.priceTarget != null ? Number(tracker.priceTarget) : null;
+              if (!crossedPriceTarget(listing.price, result.price, target)) continue;
+              // Respect mute + allowed days (but not the alertMaxPrice ceiling —
+              // the target itself is the price condition here).
+              if (
+                !passesAlertRules(
+                  { alertDays: tracker.alertDays, mutedUntil: tracker.mutedUntil },
+                  { price: result.price ?? null, timezone: tracker.user.timezone }
+                )
+              ) {
+                continue;
+              }
+              logger.info('price target hit — notifying tracker', {
+                ...ctx,
+                price: result.price,
+                target,
+                userId: tracker.user.id,
+              });
+              await sendNotifications({
+                user: {
+                  ...tracker.user,
+                  notifyEmail: tracker.user.emailAlerts && tracker.notifyEmail,
+                  notifyPush: tracker.user.pushAlerts && tracker.notifyPush,
+                  autoBuyEnabled: tracker.user.autoBuyEnabled,
+                },
+                product,
+                storeSlug,
+                storeName: listing.store.name,
+                productUrl: result.productUrl ?? listing.url,
+                price: result.price,
+                status: result.status,
+                kind: 'PRICE_TARGET',
+                targetPrice: target,
+              });
             }
           }
 

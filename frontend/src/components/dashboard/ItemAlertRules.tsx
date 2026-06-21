@@ -4,18 +4,20 @@ import { useUpdateTracking } from '../../hooks/useProducts';
 interface Props {
   productId: string;
   alertMaxPrice?: number | string | null;
+  priceTarget?: number | string | null;
   alertDays?: number[];
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function ItemAlertRules({ productId, alertMaxPrice, alertDays = [] }: Props) {
+export default function ItemAlertRules({ productId, alertMaxPrice, priceTarget, alertDays = [] }: Props) {
   const update = useUpdateTracking();
   const [open, setOpen] = useState(false);
   const [price, setPrice] = useState(alertMaxPrice != null ? String(alertMaxPrice) : '');
+  const [target, setTarget] = useState(priceTarget != null ? String(priceTarget) : '');
   const [days, setDays] = useState<number[]>(alertDays);
 
-  const hasRules = (alertMaxPrice != null) || (alertDays && alertDays.length > 0);
+  const hasRules = (alertMaxPrice != null) || (priceTarget != null) || (alertDays && alertDays.length > 0);
 
   const toggleDay = (d: number) => {
     const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort();
@@ -30,6 +32,13 @@ export default function ItemAlertRules({ productId, alertMaxPrice, alertDays = [
     update.mutate({ productId, alertMaxPrice: num });
   };
 
+  const saveTarget = () => {
+    const trimmed = target.trim();
+    const num = trimmed === '' ? null : Number(trimmed);
+    if (num !== null && (Number.isNaN(num) || num < 0)) return;
+    update.mutate({ productId, priceTarget: num });
+  };
+
   return (
     <div className="mt-1.5">
       <button
@@ -42,6 +51,20 @@ export default function ItemAlertRules({ productId, alertMaxPrice, alertDays = [
       {open && (
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2">
+            <span className="text-caption2 text-dark-label2 w-24">🎯 Alert me at ≤</span>
+            <span className="text-caption1 text-dark-label3">$</span>
+            <input
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              onBlur={saveTarget}
+              onKeyDown={(e) => e.key === 'Enter' && saveTarget()}
+              inputMode="decimal"
+              placeholder="target"
+              className="input w-20 text-caption1 py-1"
+            />
+            <span className="text-caption2 text-dark-label3">fires when the price drops to your number</span>
+          </div>
+          <div className="flex items-center gap-2">
             <span className="text-caption2 text-dark-label2 w-24">Only if price ≤</span>
             <span className="text-caption1 text-dark-label3">$</span>
             <input
@@ -53,6 +76,7 @@ export default function ItemAlertRules({ productId, alertMaxPrice, alertDays = [
               placeholder="any"
               className="input w-20 text-caption1 py-1"
             />
+            <span className="text-caption2 text-dark-label3">filter: mutes other alerts above this</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-caption2 text-dark-label2 w-24">Only on days</span>

@@ -7,8 +7,9 @@ interface SmsPayload {
   productUrl: string;
   price?: number | null;
   status: string;
-  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK';
+  kind?: 'RESTOCK' | 'PRICE_DROP' | 'LOW_STOCK' | 'PICKUP' | 'PRICE_TARGET';
   previousPrice?: number | null;
+  targetPrice?: number | null;
 }
 
 function statusLabel(status: string): string {
@@ -21,7 +22,7 @@ function statusLabel(status: string): string {
 }
 
 export async function sendSmsAlert(payload: SmsPayload): Promise<void> {
-  const { to, productName, storeName, productUrl, price, status, kind, previousPrice } = payload;
+  const { to, productName, storeName, productUrl, price, status, kind, previousPrice, targetPrice } = payload;
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -36,7 +37,15 @@ export async function sendSmsAlert(payload: SmsPayload): Promise<void> {
   const priceStr = price ? ` — $${price.toFixed(2)}` : '';
 
   const message =
-    kind === 'PRICE_DROP'
+    kind === 'PRICE_TARGET'
+      ? [
+          `🎯 TrackIt Price Target`,
+          `${productName} hit your target — now $${price?.toFixed(2) ?? '?'}${
+            targetPrice ? ` (target $${targetPrice.toFixed(2)})` : ''
+          } at ${storeName}!`,
+          `Buy: ${productUrl}`,
+        ].join('\n')
+      : kind === 'PRICE_DROP'
       ? [
           `💸 TrackIt Price Drop`,
           `${productName} is now $${price?.toFixed(2) ?? '?'}${

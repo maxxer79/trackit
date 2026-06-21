@@ -126,6 +126,8 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
         storeProductId: sl.id,
         pickupAvailable: sl.pickupAvailable ?? null,
         pickupLocation: sl.pickupLocation ?? null,
+        lowestPrice: sl.lowestPrice ?? null,
+        lowestPriceAt: sl.lowestPriceAt ?? null,
         storeSearchUrl: sl.store?.searchUrl ?? STORE_SEARCH_URLS[sl.store?.slug] ?? null,
       })),
       bestStatus: product.storeListings.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',

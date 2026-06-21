@@ -94,6 +94,12 @@ export class LowesScraper extends BaseScraper {
   private mapWpd(productId: string, data: any, productUrl: string): StockResult | null {
     const signals: Signal[] = [];
     const prices: number[] = [];
+    // Pickup-specific signals: the wpd endpoint is already store-scoped (storeId
+    // + zip), so a pickup/bopis-keyed availability flag means "available for
+    // in-store pickup at THIS store". Kept separate from the general availability
+    // signals so a ship-to-home flag never masquerades as pickup.
+    const pickupSignals: Signal[] = [];
+    let storeName: string | undefined;
     const seen = new Set<any>();
 
     const walk = (node: any, path: string, depth: number) => {
@@ -106,6 +112,14 @@ export class LowesScraper extends BaseScraper {
         } else if (t === 'boolean' || t === 'string' || t === 'number') {
           if (/availab|in.?stock|purchasable|stock.?status|sellable|buyable|backorder/i.test(key)) {
             signals.push({ key, value: value as any, path: `${path}.${key}` });
+          }
+          // Pickup signal only when the KEY itself names pickup/BOPIS — avoids
+          // generic "available" (ship-to-home) being read as pickup.
+          if (/pickup|bopis|bopus/i.test(key) && (t === 'boolean' || t === 'string' || (t === 'number' && /qty|quantity|count|stock/i.test(key)))) {
+            pickupSignals.push({ key, value: value as any, path: `${path}.${key}` });
+          }
+          if (t === 'string' && !storeName && /store.?name|store.?label|storedisplayname/i.test(key) && value) {
+            storeName = String(value);
           }
           if (t === 'number' && /sellingprice|finalprice|itemprice|^price$|minprice/i.test(key) && (value as number) > 0) {
             prices.push(value as number);
@@ -145,11 +159,39 @@ export class LowesScraper extends BaseScraper {
 
     const price = prices.length ? Math.min(...prices) : undefined;
 
+    // In-store pickup: stays undefined (unknown) unless the response carried a
+    // clearly pickup-keyed signal — never assert false, so we never fire a wrong
+    // pickup alert. Location uses the store name when present, else the store #.
+    let pickupAvailable: boolean | undefined;
+    if (pickupSignals.length > 0) {
+      logger.info(
+        `[Lowes ${productId}] pickup signals: ${pickupSignals.slice(0, 8).map((s) => `${s.path}=${s.value}`).join(' | ')}`
+      );
+      let pPos = false;
+      let pNeg = false;
+      for (const s of pickupSignals) {
+        const v = s.value;
+        if (typeof v === 'boolean') {
+          if (/not|un/i.test(s.key) ? !v : v) pPos = true;
+          else pNeg = true;
+        } else if (typeof v === 'string') {
+          if (/^(available|in.?stock|instock|true|yes)$/i.test(v)) pPos = true;
+          else if (/^(out.?of.?stock|unavailable|oos|sold.?out|false|no)$/i.test(v)) pNeg = true;
+        } else if (typeof v === 'number') {
+          if (v > 0) pPos = true;
+          else pNeg = true;
+        }
+      }
+      if (pPos) pickupAvailable = true;
+      else if (pNeg) pickupAvailable = false;
+    }
+    const pickupLocation = pickupAvailable === true ? (storeName ?? `Lowe's #${STORE}`) : undefined;
+
     if (positive) {
-      return { storeSlug: this.storeSlug, status: 'IN_STOCK', price, productUrl };
+      return { storeSlug: this.storeSlug, status: 'IN_STOCK', price, productUrl, pickupAvailable, pickupLocation };
     }
     if (negative) {
-      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', price, productUrl };
+      return { storeSlug: this.storeSlug, status: 'OUT_OF_STOCK', price, productUrl, pickupAvailable, pickupLocation };
     }
     return null;
   }
