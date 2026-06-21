@@ -495,7 +495,7 @@ export default function ProductPage() {
       )}
 
       {/* How often this product comes back in stock */}
-      <RestockFrequencyBadge slug={slug!} />
+      <RestockFrequencyBadge slug={slug!} outOfStock={inStockStatuses.length === 0} />
 
       {/* Visual in/out stock history timeline */}
       <StockTimelinePanel slug={slug!} />

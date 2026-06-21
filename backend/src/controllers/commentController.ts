@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
-import { restockFrequency, buildStockTimeline } from '../services/analytics';
+import { restockFrequency, restockPrediction, buildStockTimeline } from '../services/analytics';
 
 export const getComments = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -94,7 +94,8 @@ export const getRestockFrequency = async (req: Request, res: Response): Promise<
     });
 
     const freq = restockFrequency(events);
-    res.json(freq);
+    const prediction = restockPrediction(events);
+    res.json({ ...freq, prediction });
   } catch (error) {
     logger.error('GetRestockFrequency error', error);
     res.status(500).json({ error: 'Failed to compute restock frequency' });

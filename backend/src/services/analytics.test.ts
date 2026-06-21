@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeRestocks, restockFrequency, buildStockTimeline } from './analytics';
+import { summarizeRestocks, restockFrequency, buildStockTimeline, restockPrediction } from './analytics';
 
 const day = (n: number) => new Date(2026, 0, n).toISOString();
 
@@ -104,6 +104,66 @@ describe('restockFrequency', () => {
     expect(f.intervalsCount).toBe(1);
     expect(f.medianIntervalDays).toBeNull(); // not enough yet
     expect(f.lastRestockAt).not.toBeNull(); // but we still know the last restock
+  });
+});
+
+describe('restockPrediction', () => {
+  // Steady 10-day cadence, last restock on Jan 22; "now" = Jan 27.
+  const steadyRows = [
+    { status: 'OUT_OF_STOCK', createdAt: day(1) },
+    { status: 'IN_STOCK', createdAt: day(2) },
+    { status: 'OUT_OF_STOCK', createdAt: day(5) },
+    { status: 'IN_STOCK', createdAt: day(12) }, // +10
+    { status: 'OUT_OF_STOCK', createdAt: day(13) },
+    { status: 'IN_STOCK', createdAt: day(22) }, // +10
+  ];
+  const NOW_JAN27 = new Date(2026, 0, 27);
+
+  it('returns a null prediction until there are enough intervals', () => {
+    const p = restockPrediction([
+      { status: 'OUT_OF_STOCK', createdAt: day(1) },
+      { status: 'IN_STOCK', createdAt: day(2) },
+      { status: 'OUT_OF_STOCK', createdAt: day(3) },
+      { status: 'IN_STOCK', createdAt: day(8) }, // only 1 interval
+    ]);
+    expect(p.confidence).toBeNull();
+    expect(p.predictedNextAt).toBeNull();
+    expect(p.intervalsCount).toBe(1);
+  });
+
+  it('projects the next restock from the median interval', () => {
+    const p = restockPrediction(steadyRows, NOW_JAN27);
+    // last restock day(22) + median 10 days = day(32) → Feb 1
+    expect(p.predictedNextAt).toBe(new Date(2026, 1, 1).toISOString());
+    expect(p.medianIntervalDays).toBe(10);
+    // point estimate is Feb 1, now is Jan 27 → ~5 days out
+    expect(p.etaDays).toBeCloseTo(5, 1);
+    expect(p.overdue).toBe(false);
+  });
+
+  it('rates a steady cadence as high confidence', () => {
+    const rows = [
+      { status: 'OUT_OF_STOCK', createdAt: day(1) },
+      { status: 'IN_STOCK', createdAt: day(2) },
+      { status: 'OUT_OF_STOCK', createdAt: day(3) },
+      { status: 'IN_STOCK', createdAt: day(12) }, // +10
+      { status: 'OUT_OF_STOCK', createdAt: day(13) },
+      { status: 'IN_STOCK', createdAt: day(22) }, // +10
+      { status: 'OUT_OF_STOCK', createdAt: day(23) },
+      { status: 'IN_STOCK', createdAt: day(32) }, // +10
+      { status: 'OUT_OF_STOCK', createdAt: day(33) },
+      { status: 'IN_STOCK', createdAt: day(42) }, // +10  → 4 intervals, cv≈0
+    ];
+    const p = restockPrediction(rows);
+    expect(p.intervalsCount).toBe(4);
+    expect(p.confidence).toBe('high');
+    expect(p.cv).toBeLessThanOrEqual(0.35);
+  });
+
+  it('flags overdue when now is past the predicted window', () => {
+    const p = restockPrediction(steadyRows, new Date(2026, 1, 20)); // well past Feb 1
+    expect(p.overdue).toBe(true);
+    expect(p.etaDays).toBeLessThan(0);
   });
 });
 

@@ -56,12 +56,13 @@ export interface RestockFrequency {
 const IN_STOCK_STATUSES = new Set(['IN_STOCK', 'LIMITED', 'PREORDER']);
 const isInStock = (status: string): boolean => IN_STOCK_STATUSES.has(status);
 
-export function restockFrequency(
-  rows: StatusRow[],
-  opts: { minIntervals?: number } = {}
-): RestockFrequency {
-  const minIntervals = opts.minIntervals ?? 2; // ≥2 intervals ⇒ ≥3 restocks
-
+/**
+ * Collapse raw StockEvent rows (which fire on status OR price change) into the
+ * chronological list of true out→in restock instants. UNKNOWN never flips the
+ * stock state (matches the scraper rule). Shared by restockFrequency and
+ * restockPrediction so both measure the exact same events.
+ */
+export function extractRestockTimes(rows: StatusRow[]): Date[] {
   const sorted = rows
     .map((r) => ({ status: r.status, at: r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt) }))
     .filter((r) => !Number.isNaN(r.at.getTime()))
@@ -71,16 +72,40 @@ export function restockFrequency(
   let prevInStock: boolean | null = null;
   for (const r of sorted) {
     const nowIn = isInStock(r.status);
-    // A restock is a transition into stock from a known out-of-stock state.
     if (nowIn && prevInStock === false) restockTimes.push(r.at);
-    // UNKNOWN never flips the stock state (matches the scraper rule).
     if (r.status !== 'UNKNOWN') prevInStock = nowIn;
   }
+  return restockTimes;
+}
 
-  const intervals: number[] = [];
-  for (let i = 1; i < restockTimes.length; i++) {
-    intervals.push((restockTimes[i].getTime() - restockTimes[i - 1].getTime()) / 86_400_000);
+function intervalsBetween(times: Date[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < times.length; i++) {
+    out.push((times[i].getTime() - times[i - 1].getTime()) / 86_400_000);
   }
+  return out;
+}
+
+/** Linear-interpolated percentile (p in 0..1) over an unsorted numeric array. */
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const s = [...values].sort((a, b) => a - b);
+  if (s.length === 1) return s[0];
+  const idx = p * (s.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return s[lo];
+  return s[lo] + (s[hi] - s[lo]) * (idx - lo);
+}
+
+export function restockFrequency(
+  rows: StatusRow[],
+  opts: { minIntervals?: number } = {}
+): RestockFrequency {
+  const minIntervals = opts.minIntervals ?? 2; // ≥2 intervals ⇒ ≥3 restocks
+
+  const restockTimes = extractRestockTimes(rows);
+  const intervals = intervalsBetween(restockTimes);
 
   const round1 = (n: number): number => Math.round(n * 10) / 10;
   const avg = intervals.length ? round1(intervals.reduce((s, n) => s + n, 0) / intervals.length) : null;
@@ -98,6 +123,85 @@ export function restockFrequency(
     avgIntervalDays: enough ? avg : null,
     medianIntervalDays: enough ? median : null,
     intervalsCount: intervals.length,
+  };
+}
+
+// ── Restock prediction ────────────────────────────────────────────────────────
+// Project the NEXT likely restock from the historical interval distribution.
+// Point estimate = last restock + median interval. The window is the 25th–75th
+// percentile of intervals added to the last restock ("half the time it's back
+// within this window"). Confidence reflects sample size AND regularity (a low
+// coefficient of variation = a steady cadence we can trust).
+
+export type RestockConfidence = 'low' | 'medium' | 'high';
+
+export interface RestockPrediction {
+  predictedNextAt: string | null; // ISO; last restock + median interval
+  windowStart: string | null; // ISO; last restock + p25 interval
+  windowEnd: string | null; // ISO; last restock + p75 interval
+  etaDays: number | null; // days from `now` to the point estimate (negative = due/overdue)
+  overdue: boolean; // now is past the predicted window
+  confidence: RestockConfidence | null; // null until there's enough data to predict
+  intervalsCount: number;
+  medianIntervalDays: number | null;
+  cv: number | null; // coefficient of variation of intervals (spread / mean)
+}
+
+export function restockPrediction(
+  rows: StatusRow[],
+  now: Date = new Date(),
+  opts: { minIntervals?: number } = {}
+): RestockPrediction {
+  const minIntervals = opts.minIntervals ?? 2;
+  const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+  const times = extractRestockTimes(rows);
+  const intervals = intervalsBetween(times);
+  const empty: RestockPrediction = {
+    predictedNextAt: null,
+    windowStart: null,
+    windowEnd: null,
+    etaDays: null,
+    overdue: false,
+    confidence: null,
+    intervalsCount: intervals.length,
+    medianIntervalDays: null,
+    cv: null,
+  };
+
+  if (intervals.length < minIntervals) return empty;
+
+  const last = times[times.length - 1];
+  const mean = intervals.reduce((s, n) => s + n, 0) / intervals.length;
+  const median = percentile(intervals, 0.5);
+  const p25 = percentile(intervals, 0.25);
+  const p75 = percentile(intervals, 0.75);
+  const variance = intervals.reduce((s, n) => s + (n - mean) ** 2, 0) / intervals.length;
+  const stdev = Math.sqrt(variance);
+  const cv = mean > 0 ? stdev / mean : 0;
+
+  const addDays = (d: Date, days: number): string => new Date(d.getTime() + days * 86_400_000).toISOString();
+  const predictedNextAt = addDays(last, median);
+  const windowStart = addDays(last, p25);
+  const windowEnd = addDays(last, p75);
+  const etaDays = round1((new Date(predictedNextAt).getTime() - now.getTime()) / 86_400_000);
+  const overdue = now.getTime() > new Date(windowEnd).getTime();
+
+  // Confidence: more intervals + steadier cadence ⇒ more trust.
+  let confidence: RestockConfidence = 'low';
+  if (intervals.length >= 4 && cv <= 0.35) confidence = 'high';
+  else if (intervals.length >= 3 && cv <= 0.6) confidence = 'medium';
+
+  return {
+    predictedNextAt,
+    windowStart,
+    windowEnd,
+    etaDays,
+    overdue,
+    confidence,
+    intervalsCount: intervals.length,
+    medianIntervalDays: round1(median),
+    cv: round1(cv),
   };
 }
 

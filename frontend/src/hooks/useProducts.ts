@@ -90,12 +90,25 @@ export function useTrackingAnalytics() {
   });
 }
 
+export interface RestockPrediction {
+  predictedNextAt: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+  etaDays: number | null;
+  overdue: boolean;
+  confidence: 'low' | 'medium' | 'high' | null;
+  intervalsCount: number;
+  medianIntervalDays: number | null;
+  cv: number | null;
+}
+
 export interface RestockFrequency {
   restockCount: number;
   lastRestockAt: string | null;
   avgIntervalDays: number | null;
   medianIntervalDays: number | null;
   intervalsCount: number;
+  prediction?: RestockPrediction;
 }
 
 export function useSimilarProducts(slug: string) {
