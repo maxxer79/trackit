@@ -5,6 +5,7 @@ import api from '../lib/api';
 import { useAuthStore } from '../store/auth';
 import { useThemeStore, ACCENTS } from '../store/theme';
 import toast from 'react-hot-toast';
+import clsx from 'clsx';
 
 interface NotifPrefs {
   emailEnabled: boolean;
@@ -15,6 +16,7 @@ interface NotifPrefs {
   lowStockEnabled: boolean;
   pickupEnabled: boolean;
   pickupZip: string | null;
+  digestFrequency: 'off' | 'daily' | 'weekly';
   quietHoursEnabled: boolean;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
@@ -408,6 +410,38 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+        </motion.div>
+
+        {/* Digest email */}
+        <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }}>
+          <h2 className="text-title2 font-bold text-dark-label1 mb-1">📬 Digest Email</h2>
+          <p className="text-footnote text-dark-label2 mb-4">
+            Get a single summary email of everything that happened to your tracked items — restocks, price drops,
+            price-target hits, pickup, and low stock. Nothing's sent on a day with no activity.
+          </p>
+          <div className="flex gap-2">
+            {([
+              { v: 'off', label: 'Off' },
+              { v: 'daily', label: 'Daily' },
+              { v: 'weekly', label: 'Weekly' },
+            ] as const).map((o) => (
+              <button
+                key={o.v}
+                onClick={() => handleChange('digestFrequency', o.v)}
+                className={clsx(
+                  'flex-1 py-2.5 rounded-apple text-subhead font-semibold border transition-colors',
+                  (form.digestFrequency ?? 'off') === o.v
+                    ? 'bg-apple-blue text-white border-apple-blue'
+                    : 'bg-dark-surface2 text-dark-label2 border-dark-separator hover:text-dark-label1'
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-caption2 text-dark-label3 mt-3">
+            Daily digests send each morning; weekly digests arrive Monday mornings. Sent to your account email.
+          </p>
         </motion.div>
 
         {/* Quiet Hours */}

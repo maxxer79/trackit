@@ -38,6 +38,16 @@ function createTransporter() {
   });
 }
 
+/**
+ * Send an arbitrary HTML email through the same SMTP transport the alert emails
+ * use. Used by the digest worker. Throws on send failure (caller decides).
+ */
+export async function sendRawEmail(args: { to: string; subject: string; html: string }): Promise<void> {
+  const transporter = createTransporter();
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'alerts@trackit.app';
+  await transporter.sendMail({ from: `"TrackIt" <${from}>`, to: args.to, subject: args.subject, html: args.html });
+}
+
 function formatPrice(price?: number | null): string {
   if (!price) return '';
   return ` — $${price.toFixed(2)}`;

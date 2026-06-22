@@ -10,6 +10,7 @@ import { scheduleAllProducts, getWorkerHealth } from './workers/stockChecker';
 import { pruneOldRecords } from './workers/prune';
 import { startDeliveryPoller } from './workers/deliveryPoller';
 import { startAutoArchive } from './workers/autoArchive';
+import { startDigest } from './workers/digest';
 import { ensureScreenshotDir, screenshotDir, screenshotEnabled, pruneOldScreenshots } from './services/screenshot';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
@@ -166,6 +167,8 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "lowestPrice" DOUBLE PRECISION');
     await prisma.$executeRawUnsafe('ALTER TABLE "store_products" ADD COLUMN IF NOT EXISTS "lowestPriceAt" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe(`ALTER TYPE "AlertType" ADD VALUE IF NOT EXISTS 'PRICE_TARGET'`);
+    // Digest email (v1.4.126)
+    await prisma.$executeRawUnsafe(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "digestFrequency" TEXT NOT NULL DEFAULT 'off'`);
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertMaxPrice" DECIMAL');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "mutedUntil" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)');
@@ -303,6 +306,9 @@ httpServer.listen(PORT, async () => {
 
   // Auto-archive stale trackings (no-op unless AUTO_ARCHIVE_MONTHS > 0).
   startAutoArchive();
+
+  // Daily/weekly digest emails (no-op unless users opt in + SMTP configured).
+  startDigest();
 
   // Restock proof screenshots — prepare the dir and prune old files daily.
   if (screenshotEnabled()) {

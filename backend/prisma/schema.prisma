@@ -36,6 +36,8 @@ model User {
   // the user's tracked items, plus the master on/off switch for pickup alerts.
   pickupZip      String?
   notifyPickup   Boolean   @default(false)
+  // Digest email cadence: "off" | "daily" | "weekly". Opt-in.
+  digestFrequency String   @default("off")
   avatar         String?
   isActive       Boolean   @default(true)
   lastLoginAt    DateTime?

@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 import logger from '../utils/logger';
 import { normalizeZip } from '../services/pickup';
+import { normalizeFrequency } from '../services/digest';
 
 export const getNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -182,6 +183,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         autoBuyEnabled: true,
         notifyPickup: true,
         pickupZip: true,
+        digestFrequency: true,
       },
     });
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
@@ -196,6 +198,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         lowStockEnabled: user.notifyLowStock,
         pickupEnabled: user.notifyPickup,
         pickupZip: user.pickupZip,
+        digestFrequency: user.digestFrequency,
         quietHoursEnabled: user.quietHoursEnabled,
         quietHoursStart: user.quietHoursStart,
         quietHoursEnd: user.quietHoursEnd,
@@ -221,12 +224,13 @@ export const updatePreferences = async (req: AuthRequest, res: Response): Promis
   try {
     const {
       emailEnabled, smsEnabled, pushEnabled, discordEnabled, priceDropEnabled, lowStockEnabled,
-      pickupEnabled, pickupZip,
+      pickupEnabled, pickupZip, digestFrequency,
       quietHoursEnabled, quietHoursStart, quietHoursEnd, timezone,
       phone, discordWebhook, autoBuyEnabled,
     } = req.body;
 
     const data: Record<string, unknown> = {};
+    if (digestFrequency !== undefined) data.digestFrequency = normalizeFrequency(digestFrequency);
     if (emailEnabled !== undefined) data.emailAlerts = !!emailEnabled;
     if (smsEnabled !== undefined) data.notifySms = !!smsEnabled;
     if (pushEnabled !== undefined) data.pushAlerts = !!pushEnabled;
