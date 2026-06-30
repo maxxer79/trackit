@@ -4,6 +4,7 @@ import logger from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
 import { carrierTrackingUrl, mapShip24Milestone, ship24CourierCode } from '../services/carriers';
 import { ship24Enabled, createTracker, getTrackerResults } from '../services/ship24';
+import { purchaseSavings, PriceEvent } from '../services/priceAnalytics';
 
 // Attach a carrier deep-link and coerce Decimal price → number for the client.
 function shape(p: any) {
@@ -52,6 +53,44 @@ export const getMyPurchases = async (req: AuthRequest, res: Response): Promise<v
   } catch (error) {
     logger.error('GetMyPurchases error', error);
     res.status(500).json({ error: 'Failed to fetch purchases' });
+  }
+};
+
+// Lifetime money saved: each purchase versus the item's typical (time-weighted)
+// price at the moment it was bought, from StockEvent history. Reuses the same
+// price-analytics engine as the good-deal badge.
+export const getMySavings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const purchases = await prisma.purchase.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { purchasedAt: 'desc' },
+      select: {
+        id: true, productId: true, price: true, storeSlug: true,
+        purchasedAt: true, productName: true, storeName: true,
+      },
+    });
+
+    const productIds = [...new Set(purchases.map((p) => p.productId))];
+    const events = productIds.length
+      ? await prisma.stockEvent.findMany({
+          where: { productId: { in: productIds } },
+          select: { productId: true, status: true, price: true, createdAt: true, storeSlug: true, storeName: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+
+    const byProduct = new Map<string, PriceEvent[]>();
+    for (const e of events) {
+      const arr = byProduct.get(e.productId);
+      if (arr) arr.push(e);
+      else byProduct.set(e.productId, [e]);
+    }
+
+    const rows = purchases.map((p) => ({ ...p, price: p.price != null ? Number(p.price) : null }));
+    res.json(purchaseSavings(rows, byProduct));
+  } catch (error) {
+    logger.error('GetMySavings error', error);
+    res.status(500).json({ error: 'Failed to compute savings' });
   }
 };
 

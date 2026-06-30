@@ -153,6 +153,37 @@ export function useRestockFrequency(slug: string) {
   });
 }
 
+export type DealVerdict =
+  | 'lowest' | 'great' | 'below_avg' | 'average' | 'above_avg' | 'high' | null;
+
+export interface PriceInsight {
+  current: number | null;
+  windowLow: number | null;
+  windowHigh: number | null;
+  timeWeightedAvg: number | null;
+  cheapness: number | null;
+  verdict: DealVerdict;
+  confidence: 'low' | 'medium' | 'high' | null;
+  windowDays: number;
+  spanDays: number;
+  samples: number;
+  storeSlug: string | null;
+  storeName: string | null;
+  inStock: boolean;
+}
+
+export function usePriceInsight(slug: string) {
+  return useQuery<PriceInsight>({
+    queryKey: ['price-insight', slug],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${slug}/price-insight`);
+      return data;
+    },
+    enabled: !!slug,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useAddTracking() {
   const qc = useQueryClient();
   return useMutation({

@@ -61,6 +61,34 @@ export function usePurchases() {
   });
 }
 
+export interface SavingsRow {
+  id: string;
+  productName: string | null;
+  storeName: string | null;
+  purchasedAt: string;
+  paid: number | null;
+  reference: number | null;
+  saved: number | null;
+  confidence: 'low' | 'medium' | 'high' | null;
+}
+
+export interface SavingsSummary {
+  totalSaved: number;
+  counted: number;
+  rows: SavingsRow[];
+}
+
+export function usePurchaseSavings() {
+  return useQuery<SavingsSummary>({
+    queryKey: ['purchase-savings'],
+    queryFn: async () => {
+      const { data } = await api.get('/purchases/savings');
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useCreatePurchase() {
   const qc = useQueryClient();
   return useMutation({

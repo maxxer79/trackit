@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import {
   usePurchases,
+  usePurchaseSavings,
   useUpdatePurchase,
   useDeletePurchase,
   useRefreshPurchaseTracking,
@@ -14,6 +15,9 @@ import {
 } from '../hooks/usePurchases';
 import { formatDistanceToNow } from 'date-fns';
 
+const money = (n: number): string =>
+  `$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const STATUS_COLOR: Record<string, string> = {
   ORDERED: 'text-dark-label2',
   SHIPPED: 'text-apple-blue',
@@ -22,7 +26,7 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: 'text-apple-red',
 };
 
-function PurchaseRow({ purchase }: { purchase: Purchase }) {
+function PurchaseRow({ purchase, saved }: { purchase: Purchase; saved?: number | null }) {
   const update = useUpdatePurchase();
   const del = useDeletePurchase();
   const refresh = useRefreshPurchaseTracking();
@@ -57,6 +61,18 @@ function PurchaseRow({ purchase }: { purchase: Purchase }) {
               ? ` · delivered ${format(new Date(purchase.deliveredAt), 'MMM d')}`
               : ''}
           </p>
+          {saved != null && Math.abs(saved) >= 0.01 && (
+            <span
+              className={`inline-block mt-1 text-caption2 font-semibold px-2 py-0.5 rounded-pill border ${
+                saved >= 0
+                  ? 'text-apple-green bg-apple-green/10 border-apple-green/20'
+                  : 'text-apple-orange bg-apple-orange/10 border-apple-orange/20'
+              }`}
+              title="Versus this item's typical price when you bought it"
+            >
+              {saved >= 0 ? `Saved ${money(saved)}` : `${money(saved)} over typical`}
+            </span>
+          )}
         </div>
         <button
           onClick={() => del.mutate(purchase.id, { onError: () => toast.error('Delete failed') })}
@@ -140,6 +156,11 @@ function PurchaseRow({ purchase }: { purchase: Purchase }) {
 
 export default function PurchasesPage() {
   const { data: purchases, isLoading } = usePurchases();
+  const { data: savings } = usePurchaseSavings();
+
+  const savedById = new Map<string, number | null>(
+    (savings?.rows ?? []).map((r) => [r.id, r.saved])
+  );
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
@@ -147,6 +168,22 @@ export default function PurchasesPage() {
         <h1 className="section-title">My Purchases</h1>
         <p className="section-subtitle">Track deliveries for items you've bought</p>
       </div>
+
+      {savings && savings.counted > 0 && (
+        <div className="card p-4 mb-6 flex items-center gap-3">
+          <span className="text-2xl" aria-hidden="true">💰</span>
+          <div>
+            <p className="text-subhead font-semibold text-dark-label1">
+              {savings.totalSaved >= 0
+                ? <>You've saved {money(savings.totalSaved)} vs typical prices</>
+                : <>Net {money(savings.totalSaved)} above typical prices</>}
+            </p>
+            <p className="text-caption1 text-dark-label2 mt-0.5">
+              Across {savings.counted} purchase{savings.counted === 1 ? '' : 's'} with enough price history to compare — measured against each item's usual price when you bought it.
+            </p>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-subhead text-dark-label3">Loading…</p>
@@ -161,7 +198,7 @@ export default function PurchasesPage() {
       ) : (
         <div className="space-y-3">
           {purchases.map((p) => (
-            <PurchaseRow key={p.id} purchase={p} />
+            <PurchaseRow key={p.id} purchase={p} saved={savedById.get(p.id) ?? null} />
           ))}
         </div>
       )}

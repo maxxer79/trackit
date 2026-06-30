@@ -11,6 +11,7 @@ import clsx from 'clsx';
 import api from '../lib/api';
 import StoreLogo from '../components/ui/StoreLogo';
 import PriceHistoryChart, { StockHistoryEvent } from '../components/products/PriceHistoryChart';
+import PriceDealBadge from '../components/products/PriceDealBadge';
 import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge';
 import StockTimelinePanel from '../components/products/StockTimelinePanel';
 import SimilarItems from '../components/products/SimilarItems';
@@ -499,6 +500,9 @@ export default function ProductPage() {
 
       {/* Visual in/out stock history timeline */}
       <StockTimelinePanel slug={slug!} />
+
+      {/* Good-deal verdict: is the current price actually a good price? */}
+      <PriceDealBadge slug={slug!} />
 
       {/* Price history chart (renders only when there are ≥2 priced points) */}
       <PriceHistoryChart events={stockHistory as StockHistoryEvent[]} />

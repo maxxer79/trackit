@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
 import { restockFrequency, restockPrediction, buildStockTimeline } from '../services/analytics';
+import { productPriceInsight } from '../services/priceAnalytics';
 
 export const getComments = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -120,5 +121,27 @@ export const getStockTimeline = async (req: Request, res: Response): Promise<voi
   } catch (error) {
     logger.error('GetStockTimeline error', error);
     res.status(500).json({ error: 'Failed to build stock timeline' });
+  }
+};
+
+// Good-deal verdict: where the current best in-stock price sits versus its own
+// trailing-window history (time-weighted), from the product's StockEvent rows.
+export const getPriceInsight = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    const product = await prisma.product.findUnique({ where: { slug }, select: { id: true } });
+    if (!product) { res.status(404).json({ error: 'Product not found' }); return; }
+
+    const events = await prisma.stockEvent.findMany({
+      where: { productId: product.id },
+      select: { status: true, price: true, createdAt: true, storeSlug: true, storeName: true },
+      orderBy: { createdAt: 'asc' },
+      take: 2000,
+    });
+
+    res.json(productPriceInsight(events));
+  } catch (error) {
+    logger.error('GetPriceInsight error', error);
+    res.status(500).json({ error: 'Failed to compute price insight' });
   }
 };
