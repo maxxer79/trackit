@@ -249,8 +249,10 @@ stockCheckerQueue.process(
                     notifySms: true,
                     pushAlerts: true,
                     notifyDiscord: true,
+                    notifyHomeAssistant: true,
                     phoneNumber: true,
                     discordWebhook: true,
+                    homeAssistantWebhook: true,
                     autoBuyEnabled: true,
                     quietHoursEnabled: true,
                     quietHoursStart: true,
@@ -328,8 +330,8 @@ stockCheckerQueue.process(
                 user: {
                   select: {
                     id: true, email: true, name: true, emailAlerts: true,
-                    notifySms: true, pushAlerts: true, notifyDiscord: true,
-                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true, notifyHomeAssistant: true,
+                    phoneNumber: true, discordWebhook: true, homeAssistantWebhook: true, autoBuyEnabled: true,
                     quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
                   },
                 },
@@ -406,8 +408,8 @@ stockCheckerQueue.process(
                 user: {
                   select: {
                     id: true, email: true, name: true, emailAlerts: true,
-                    notifySms: true, pushAlerts: true, notifyDiscord: true,
-                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true, notifyHomeAssistant: true,
+                    phoneNumber: true, discordWebhook: true, homeAssistantWebhook: true, autoBuyEnabled: true,
                     quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
                   },
                 },
@@ -469,8 +471,8 @@ stockCheckerQueue.process(
                 user: {
                   select: {
                     id: true, email: true, name: true, emailAlerts: true,
-                    notifySms: true, pushAlerts: true, notifyDiscord: true,
-                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true, notifyHomeAssistant: true,
+                    phoneNumber: true, discordWebhook: true, homeAssistantWebhook: true, autoBuyEnabled: true,
                     quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
                   },
                 },
@@ -533,8 +535,8 @@ stockCheckerQueue.process(
                 user: {
                   select: {
                     id: true, email: true, name: true, emailAlerts: true,
-                    notifySms: true, pushAlerts: true, notifyDiscord: true,
-                    phoneNumber: true, discordWebhook: true, autoBuyEnabled: true,
+                    notifySms: true, pushAlerts: true, notifyDiscord: true, notifyHomeAssistant: true,
+                    phoneNumber: true, discordWebhook: true, homeAssistantWebhook: true, autoBuyEnabled: true,
                     quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true, timezone: true,
                   },
                 },

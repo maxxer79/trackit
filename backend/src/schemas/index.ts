@@ -162,8 +162,15 @@ export const updatePreferencesSchema = z.object({
   smsEnabled: z.boolean().optional(),
   pushEnabled: z.boolean().optional(),
   discordEnabled: z.boolean().optional(),
+  homeAssistantEnabled: z.boolean().optional(),
   priceDropEnabled: z.boolean().optional(),
   lowStockEnabled: z.boolean().optional(),
+  // Bug fix: these three were missing here, so validate() (which strips any
+  // key not declared in the schema) was silently dropping Settings → Pickup
+  // and Settings → Digest saves before they reached the controller.
+  pickupEnabled: z.boolean().optional(),
+  pickupZip: z.string().trim().nullish(),
+  digestFrequency: z.enum(['off', 'daily', 'weekly']).optional(),
   autoBuyEnabled: z.boolean().optional(),
   quietHoursEnabled: z.boolean().optional(),
   quietHoursStart: z.number().int().min(0).max(1439).nullish(),
@@ -172,6 +179,10 @@ export const updatePreferencesSchema = z.object({
   // nullish: the GET→PUT round-trip sends null for an unset phone/webhook.
   phone: z.string().trim().nullish(),
   discordWebhook: z
+    .union([z.string().url('Enter a valid webhook URL'), z.literal('')])
+    .nullish(),
+  // Home Assistant webhook (HA's built-in /api/webhook/<id> trigger URL).
+  homeAssistantWebhook: z
     .union([z.string().url('Enter a valid webhook URL'), z.literal('')])
     .nullish(),
 });

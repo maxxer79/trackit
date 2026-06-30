@@ -141,6 +141,7 @@ export interface Alert {
   smsSent: boolean;
   pushSent: boolean;
   discordSent: boolean;
+  homeAssistantSent: boolean;
   screenshotUrl?: string | null;
   createdAt: string;
 }

@@ -173,6 +173,10 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "mutedUntil" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe('ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3)');
     await prisma.$executeRawUnsafe(`ALTER TABLE "trackings" ADD COLUMN IF NOT EXISTS "alertDays" INTEGER[] NOT NULL DEFAULT '{}'`);
+    // Home Assistant webhook channel (v1.4.131)
+    await prisma.$executeRawUnsafe('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notifyHomeAssistant" BOOLEAN NOT NULL DEFAULT false');
+    await prisma.$executeRawUnsafe('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "homeAssistantWebhook" TEXT');
+    await prisma.$executeRawUnsafe('ALTER TABLE "alerts" ADD COLUMN IF NOT EXISTS "homeAssistantSent" BOOLEAN NOT NULL DEFAULT false');
 
     // Performance indexes. Applied here rather than via `prisma migrate` (which
     // we don't run on boot); IF NOT EXISTS makes this safe to re-run every boot.

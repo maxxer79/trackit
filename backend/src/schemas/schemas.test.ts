@@ -42,6 +42,37 @@ describe('updatePreferencesSchema', () => {
   it('rejects a malformed webhook URL', () => {
     expect(updatePreferencesSchema.safeParse({ discordWebhook: 'not a url' }).success).toBe(false);
   });
+
+  // Regression: pickupEnabled/pickupZip/digestFrequency were missing from this
+  // schema, and validate() strips any key not declared here — so Settings →
+  // Pickup and Settings → Digest saves were silently discarded before ever
+  // reaching the controller. These three checks pin that fix.
+  it('round-trips pickupEnabled, pickupZip, and digestFrequency instead of stripping them', () => {
+    const r = updatePreferencesSchema.parse({ pickupEnabled: true, pickupZip: '55401', digestFrequency: 'weekly' });
+    expect(r.pickupEnabled).toBe(true);
+    expect(r.pickupZip).toBe('55401');
+    expect(r.digestFrequency).toBe('weekly');
+  });
+  it('accepts a null pickupZip (clearing it)', () => {
+    expect(updatePreferencesSchema.parse({ pickupZip: null }).pickupZip).toBeNull();
+  });
+  it('rejects an invalid digestFrequency value', () => {
+    expect(updatePreferencesSchema.safeParse({ digestFrequency: 'hourly' }).success).toBe(false);
+  });
+
+  it('round-trips the Home Assistant webhook channel', () => {
+    const r = updatePreferencesSchema.parse({
+      homeAssistantEnabled: true,
+      homeAssistantWebhook: 'http://homeassistant.local:8123/api/webhook/abc123',
+    });
+    expect(r.homeAssistantEnabled).toBe(true);
+    expect(r.homeAssistantWebhook).toContain('/api/webhook/');
+  });
+  it('accepts null/empty homeAssistantWebhook and rejects a malformed one', () => {
+    expect(updatePreferencesSchema.safeParse({ homeAssistantWebhook: null }).success).toBe(true);
+    expect(updatePreferencesSchema.safeParse({ homeAssistantWebhook: '' }).success).toBe(true);
+    expect(updatePreferencesSchema.safeParse({ homeAssistantWebhook: 'not a url' }).success).toBe(false);
+  });
 });
 
 describe('addTrackingSchema', () => {

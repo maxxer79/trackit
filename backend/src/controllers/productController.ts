@@ -4,6 +4,49 @@ import logger from '../utils/logger';
 import { STORE_SEARCH_URLS } from '../data/searchUrls';
 import { getScraperForStore } from '../scrapers/index';
 import { rankSimilar, CoTrackRow } from '../services/similar';
+import { performanceScore, confidenceLevel, ConfidenceLevel } from '../scrapers/leaderboard';
+
+// Stock Confidence Score window — long enough that even a slow-cadence listing
+// (SCRAPER_INTERVAL_MINUTES) accumulates enough checks to clear
+// MIN_CHECKS_FOR_CONFIDENCE without one bad hour skewing the whole verdict.
+const CONFIDENCE_WINDOW_HOURS = 24 * 7;
+
+interface ListingConfidence {
+  score: number;
+  level: ConfidenceLevel;
+  totalChecks: number;
+}
+
+// One (store, product) reliability read per listing, from the same ScraperLog
+// rows the admin Scraper Leaderboard already aggregates — no new table, and
+// "confidence" here always means the same thing it does on that leaderboard.
+async function buildConfidenceMap(productSlug: string): Promise<Map<string, ListingConfidence>> {
+  const since = new Date(Date.now() - CONFIDENCE_WINDOW_HOURS * 3_600_000);
+  const [totals, successes] = await Promise.all([
+    prisma.scraperLog.groupBy({
+      by: ['storeSlug'],
+      where: { productSlug, createdAt: { gte: since } },
+      _count: { _all: true },
+      _avg: { duration: true },
+    }),
+    prisma.scraperLog.groupBy({
+      by: ['storeSlug'],
+      where: { productSlug, createdAt: { gte: since }, status: 'success' },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const successBy = new Map(successes.map((s) => [s.storeSlug, s._count._all]));
+  const map = new Map<string, ListingConfidence>();
+  for (const t of totals) {
+    const total = t._count._all;
+    const success = successBy.get(t.storeSlug) ?? 0;
+    const avgDurationMs = t._avg.duration != null ? Math.round(t._avg.duration) : null;
+    const score = performanceScore(total, success, avgDurationMs);
+    map.set(t.storeSlug, { score, level: confidenceLevel(score, total), totalChecks: total });
+  }
+  return map;
+}
 
 // Map a Prisma product (with storeListings + _count) to the card shape the
 // frontend ProductCard expects (stockStatuses/bestStatus/lowestPrice).
@@ -109,6 +152,8 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
 
     await prisma.product.update({ where: { id: product.id }, data: { viewCount: { increment: 1 } } });
 
+    const confidenceMap = await buildConfidenceMap(product.slug);
+
     // Map to frontend shape
     const result = {
       ...product,
@@ -129,6 +174,7 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
         lowestPrice: sl.lowestPrice ?? null,
         lowestPriceAt: sl.lowestPriceAt ?? null,
         storeSearchUrl: sl.store?.searchUrl ?? STORE_SEARCH_URLS[sl.store?.slug] ?? null,
+        confidence: confidenceMap.get(sl.store?.slug) ?? null,
       })),
       bestStatus: product.storeListings.some((sl: any) => sl.inStock) ? 'IN_STOCK' : 'OUT_OF_STOCK',
       lowestPrice: product.storeListings.filter((sl: any) => sl.inStock && sl.price).map((sl: any) => sl.price).sort((a: number, b: number) => a - b)[0] ?? null,

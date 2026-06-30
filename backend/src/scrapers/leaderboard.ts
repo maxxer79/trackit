@@ -28,6 +28,12 @@ export const SPEED_WEIGHT = 0.15;
 export const FAST_MS = 800;
 export const SLOW_MS = 12_000;
 
+/** Below this many checks for a single (store, product) listing, don't claim to know — 'unverified'. */
+export const MIN_CHECKS_FOR_CONFIDENCE = 5;
+/** Performance-score thresholds for the per-listing confidence badge. */
+export const CONFIDENCE_HIGH_SCORE = 80;
+export const CONFIDENCE_MEDIUM_SCORE = 50;
+
 export interface RetailerStat {
   storeSlug: string;
   storeName: string;
@@ -46,6 +52,9 @@ export interface LeaderboardEntry extends RetailerStat {
 }
 
 export type OutageSeverity = 'outage' | 'partial' | 'isolated' | 'ok';
+
+/** Per-listing trust signal surfaced on the product page (Stock Confidence Score). */
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unverified';
 
 export interface OutageEntry {
   storeSlug: string;
@@ -73,6 +82,24 @@ export function performanceScore(total: number, success: number, avgDurationMs: 
   const successRate = success / total;
   const raw = successRate * SUCCESS_WEIGHT + speedScore(avgDurationMs) * SPEED_WEIGHT;
   return Math.round(raw * 100);
+}
+
+/**
+ * Stock Confidence Score: turns a (store, product) listing's recent ScraperLog
+ * track record into a trust label for the product page. Reuses performanceScore
+ * rather than inventing new math, so "confidence" and the admin Leaderboard
+ * always agree on what "reliable" means.
+ *
+ *   unverified — too few checks in the window to claim anything either way
+ *   high       — score ≥ 80 (mostly success, no glaring slowness)
+ *   medium     — score ≥ 50
+ *   low        — everything else (frequent unknown/blocked/error or very slow)
+ */
+export function confidenceLevel(score: number, totalChecks: number): ConfidenceLevel {
+  if (totalChecks < MIN_CHECKS_FOR_CONFIDENCE) return 'unverified';
+  if (score >= CONFIDENCE_HIGH_SCORE) return 'high';
+  if (score >= CONFIDENCE_MEDIUM_SCORE) return 'medium';
+  return 'low';
 }
 
 /**

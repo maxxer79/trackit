@@ -39,9 +39,16 @@ function buildRow(item: any): Row | null {
     .map((l: any) => ({ l, p: priceOf(l) }))
     .filter((x: any) => x.p != null && x.p > 0);
 
-  // "Current best" = cheapest listing; prefer in-stock when prices tie-ish.
-  priced.sort((a: any, b: any) => a.p - b.p);
-  const best = priced[0];
+  // "Current best" = cheapest IN-STOCK listing. A cheaper out-of-stock listing
+  // isn't buyable, so it shouldn't win — only fall back to it (still cheapest
+  // overall) when nothing priced is actually in stock right now.
+  const inStockPriced = priced.filter((x: any) => {
+    const st = statusOf(x.l);
+    return st === 'IN_STOCK' || st === 'LIMITED';
+  });
+  const pool = inStockPriced.length > 0 ? inStockPriced : priced;
+  pool.sort((a: any, b: any) => a.p - b.p);
+  const best = pool[0];
   const current = best ? best.p : null;
   const lowestVals = listings.map(lowestOf).filter((v: number | null) => v != null && v! > 0) as number[];
   const lowestEver = lowestVals.length ? Math.min(...lowestVals) : null;

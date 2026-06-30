@@ -4,6 +4,8 @@ import {
   performanceScore,
   rankRetailers,
   classifyOutage,
+  confidenceLevel,
+  MIN_CHECKS_FOR_CONFIDENCE,
   RetailerStat,
 } from './leaderboard';
 
@@ -105,5 +107,29 @@ describe('classifyOutage', () => {
   it('treats a lone failing listing as isolated, not an outage', () => {
     // Only one listing exists — can't prove the whole scraper is down.
     expect(classifyOutage(1, 1, 10)).toBe('isolated');
+  });
+});
+
+describe('confidenceLevel', () => {
+  it('is unverified below the minimum check count, regardless of score', () => {
+    expect(confidenceLevel(100, MIN_CHECKS_FOR_CONFIDENCE - 1)).toBe('unverified');
+    expect(confidenceLevel(0, 0)).toBe('unverified');
+  });
+  it('is high at/above 80 once there is enough data', () => {
+    expect(confidenceLevel(80, MIN_CHECKS_FOR_CONFIDENCE)).toBe('high');
+    expect(confidenceLevel(100, 50)).toBe('high');
+  });
+  it('is medium in the 50–79 band', () => {
+    expect(confidenceLevel(50, 10)).toBe('medium');
+    expect(confidenceLevel(79, 10)).toBe('medium');
+  });
+  it('is low below 50', () => {
+    expect(confidenceLevel(49, 10)).toBe('low');
+    expect(confidenceLevel(0, 10)).toBe('low');
+  });
+  it('agrees with performanceScore for a realistic flaky listing', () => {
+    // 5 checks, 1 success, slow → should land as low, not silently high
+    const score = performanceScore(5, 1, 11_000);
+    expect(confidenceLevel(score, 5)).toBe('low');
   });
 });

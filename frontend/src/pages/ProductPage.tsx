@@ -263,6 +263,14 @@ export default function ProductPage() {
 
   const inStockStatuses = mergedStatuses.filter((s: any) => s.status === 'IN_STOCK' || s.status === 'LIMITED');
 
+  // Multi-retailer rollup: which listing is the cheapest in-stock option right
+  // now, across ALL retailers (not just the currently-filtered view) — only
+  // worth flagging when there's actually a choice between ≥2 priced listings.
+  const pricedInStock = inStockStatuses.filter((s: any) => s.price != null);
+  const bestPriceStoreProductId = pricedInStock.length > 1
+    ? pricedInStock.reduce((min: any, s: any) => (s.price < min.price ? s : min), pricedInStock[0]).storeProductId
+    : null;
+
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
       {/* Breadcrumb */}
@@ -427,12 +435,37 @@ export default function ProductPage() {
                         {conditionLabel(s.condition)}
                       </span>
                     )}
+                    {s.storeProductId === bestPriceStoreProductId && (
+                      <span
+                        className="text-caption2 px-1.5 py-0.5 rounded-pill border font-medium text-apple-blue border-apple-blue/20 bg-apple-blue/10"
+                        title="Cheapest in-stock price across all tracked retailers right now"
+                      >
+                        🏆 Best price
+                      </span>
+                    )}
                     {s.pickupAvailable === true && (
                       <span
                         className="text-caption2 px-1.5 py-0.5 rounded-pill border font-medium text-apple-green border-apple-green/20 bg-apple-green/10"
                         title={s.pickupLocation ? `In-store pickup at ${s.pickupLocation}` : 'Available for in-store pickup'}
                       >
                         🏪 Pickup
+                      </span>
+                    )}
+                    {(s.confidence?.level === 'low' || s.confidence?.level === 'unverified') && (
+                      <span
+                        className={clsx(
+                          'text-caption2 px-1.5 py-0.5 rounded-pill border font-medium',
+                          s.confidence.level === 'low'
+                            ? 'text-apple-orange border-apple-orange/20 bg-apple-orange/10'
+                            : 'text-dark-label3 border-dark-separator bg-dark-surface2'
+                        )}
+                        title={
+                          s.confidence.level === 'low'
+                            ? `This source has been unreliable recently (${s.confidence.totalChecks} checks) — stock status here may be stale`
+                            : 'Not enough recent checks yet to judge this source’s reliability'
+                        }
+                      >
+                        {s.confidence.level === 'low' ? '⚠️ Flaky source' : '❓ Unverified'}
                       </span>
                     )}
                     {isSearchLink && (

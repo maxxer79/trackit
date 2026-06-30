@@ -31,6 +31,11 @@ model User {
   timezone          String?
   phoneNumber    String?
   discordWebhook String?
+  // Home Assistant integration: HA's built-in /api/webhook/<id> trigger URL.
+  // Posts the same alert events as Discord (restock/price-drop/price-target/
+  // low-stock) so a user's own HA automations can react (lights, TTS, etc).
+  notifyHomeAssistant  Boolean @default(false)
+  homeAssistantWebhook String?
   autoBuyEnabled Boolean   @default(false)
   // In-store pickup alerts: one home ZIP used as the pickup location for all of
   // the user's tracked items, plus the master on/off switch for pickup alerts.
@@ -225,6 +230,7 @@ model Alert {
   smsSent        Boolean   @default(false)
   pushSent       Boolean   @default(false)
   discordSent    Boolean   @default(false)
+  homeAssistantSent Boolean @default(false)
   isRead         Boolean   @default(false)
   screenshotPath String?
   sentAt         DateTime  @default(now())

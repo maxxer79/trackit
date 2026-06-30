@@ -92,6 +92,7 @@ export const getAlerts = async (req: AuthRequest, res: Response): Promise<void> 
         smsSent: a.smsSent,
         pushSent: a.pushSent,
         discordSent: a.discordSent,
+        homeAssistantSent: a.homeAssistantSent,
         // Path relative to the API base; the frontend prefixes its api baseURL.
         screenshotUrl: a.screenshotPath ? `/screenshots/${a.screenshotPath}` : null,
         createdAt: a.sentAt,
@@ -172,6 +173,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         pushAlerts: true,
         notifySms: true,
         notifyDiscord: true,
+        notifyHomeAssistant: true,
         notifyPriceDrop: true,
         notifyLowStock: true,
         quietHoursEnabled: true,
@@ -180,6 +182,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         timezone: true,
         phoneNumber: true,
         discordWebhook: true,
+        homeAssistantWebhook: true,
         autoBuyEnabled: true,
         notifyPickup: true,
         pickupZip: true,
@@ -194,6 +197,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         smsEnabled: user.notifySms,
         pushEnabled: user.pushAlerts,
         discordEnabled: user.notifyDiscord,
+        homeAssistantEnabled: user.notifyHomeAssistant,
         priceDropEnabled: user.notifyPriceDrop,
         lowStockEnabled: user.notifyLowStock,
         pickupEnabled: user.notifyPickup,
@@ -205,6 +209,7 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
         timezone: user.timezone,
         phone: user.phoneNumber,
         discordWebhook: user.discordWebhook,
+        homeAssistantWebhook: user.homeAssistantWebhook,
         autoBuyEnabled: user.autoBuyEnabled,
         autoBuyMaxPrice: null,
       },
@@ -223,10 +228,10 @@ export const getPreferences = async (req: AuthRequest, res: Response): Promise<v
 export const updatePreferences = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const {
-      emailEnabled, smsEnabled, pushEnabled, discordEnabled, priceDropEnabled, lowStockEnabled,
+      emailEnabled, smsEnabled, pushEnabled, discordEnabled, homeAssistantEnabled, priceDropEnabled, lowStockEnabled,
       pickupEnabled, pickupZip, digestFrequency,
       quietHoursEnabled, quietHoursStart, quietHoursEnd, timezone,
-      phone, discordWebhook, autoBuyEnabled,
+      phone, discordWebhook, homeAssistantWebhook, autoBuyEnabled,
     } = req.body;
 
     const data: Record<string, unknown> = {};
@@ -235,6 +240,7 @@ export const updatePreferences = async (req: AuthRequest, res: Response): Promis
     if (smsEnabled !== undefined) data.notifySms = !!smsEnabled;
     if (pushEnabled !== undefined) data.pushAlerts = !!pushEnabled;
     if (discordEnabled !== undefined) data.notifyDiscord = !!discordEnabled;
+    if (homeAssistantEnabled !== undefined) data.notifyHomeAssistant = !!homeAssistantEnabled;
     if (priceDropEnabled !== undefined) data.notifyPriceDrop = !!priceDropEnabled;
     if (lowStockEnabled !== undefined) data.notifyLowStock = !!lowStockEnabled;
     if (pickupEnabled !== undefined) data.notifyPickup = !!pickupEnabled;
@@ -246,6 +252,7 @@ export const updatePreferences = async (req: AuthRequest, res: Response): Promis
     if (timezone !== undefined) data.timezone = timezone || null;
     if (phone !== undefined) data.phoneNumber = phone || null;
     if (discordWebhook !== undefined) data.discordWebhook = discordWebhook || null;
+    if (homeAssistantWebhook !== undefined) data.homeAssistantWebhook = homeAssistantWebhook || null;
     if (autoBuyEnabled !== undefined) data.autoBuyEnabled = !!autoBuyEnabled;
 
     await prisma.user.update({ where: { id: req.user!.id }, data });

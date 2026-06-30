@@ -12,6 +12,7 @@ interface NotifPrefs {
   smsEnabled: boolean;
   pushEnabled: boolean;
   discordEnabled: boolean;
+  homeAssistantEnabled: boolean;
   priceDropEnabled: boolean;
   lowStockEnabled: boolean;
   pickupEnabled: boolean;
@@ -23,6 +24,7 @@ interface NotifPrefs {
   timezone: string | null;
   phone: string | null;
   discordWebhook: string | null;
+  homeAssistantWebhook: string | null;
   autoBuyEnabled: boolean;
   autoBuyMaxPrice: number | null;
 }
@@ -367,6 +369,31 @@ export default function SettingsPage() {
               )}
             </div>
 
+            {/* Home Assistant */}
+            <div>
+              <ToggleRow
+                icon="🏠"
+                label="Home Assistant Webhook"
+                description="Trigger your own HA automations on restock, price drops & more"
+                checked={form.homeAssistantEnabled ?? false}
+                onChange={(v) => handleChange('homeAssistantEnabled', v)}
+              />
+              {form.homeAssistantEnabled && (
+                <div className="mt-3 ml-12">
+                  <input
+                    type="url"
+                    value={form.homeAssistantWebhook ?? ''}
+                    onChange={(e) => handleChange('homeAssistantWebhook', e.target.value)}
+                    placeholder="http://homeassistant.local:8123/api/webhook/…"
+                    className="input text-sm"
+                  />
+                  <p className="text-caption2 text-dark-label3 mt-1.5">
+                    Create a Webhook trigger in a Home Assistant automation, then paste its URL here.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Price drops */}
             <ToggleRow
               icon="💸"
@@ -448,7 +475,7 @@ export default function SettingsPage() {
         <motion.div className="card p-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
           <h2 className="text-title2 font-bold text-dark-label1 mb-1">Quiet Hours</h2>
           <p className="text-footnote text-dark-label2 mb-5">
-            Pause email, SMS, push, and Discord alerts during these hours. You'll still see them in the app.
+            Pause email, SMS, push, Discord, and Home Assistant alerts during these hours. You'll still see them in the app.
           </p>
 
           <ToggleRow

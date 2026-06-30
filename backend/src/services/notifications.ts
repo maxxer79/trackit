@@ -3,6 +3,7 @@ import { sendEmailAlert } from './email';
 import { sendSmsAlert } from './sms';
 import { sendPushAlert } from './push';
 import { sendDiscordAlert } from './discord';
+import { sendHomeAssistantEvent } from './homeAssistant';
 import logger from '../utils/logger';
 import { NotificationError } from '../errors';
 import { autoBuyOutcome } from './autoBuy';
@@ -31,8 +32,10 @@ interface NotificationPayload {
     notifySms: boolean;
     notifyPush: boolean;
     notifyDiscord: boolean;
+    notifyHomeAssistant: boolean;
     phoneNumber: string | null;
     discordWebhook: string | null;
+    homeAssistantWebhook: string | null;
     autoBuyEnabled: boolean;
     pushSubscriptions?: any[];
     quietHoursEnabled?: boolean;
@@ -171,6 +174,26 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
     );
   }
 
+  // Home Assistant webhook — pickup alerts go to push + email + in-app only,
+  // same gating as Discord (consistent "what counts as external" definition).
+  if (!quiet && kind !== 'PICKUP' && user.notifyHomeAssistant && user.homeAssistantWebhook) {
+    results.push(
+      sendHomeAssistantEvent({
+        webhookUrl: user.homeAssistantWebhook,
+        productName: product.name,
+        productSlug: product.slug,
+        storeName,
+        productUrl,
+        price,
+        status,
+        kind,
+        previousPrice,
+        targetPrice: payload.targetPrice,
+        pickupLocation: payload.pickupLocation,
+      }).catch((err) => logChannelFailure('homeAssistant', user.id, product.slug, err))
+    );
+  }
+
   // Fire all notifications in parallel
   await Promise.allSettled(results);
 
@@ -190,6 +213,7 @@ export async function sendNotifications(payload: NotificationPayload): Promise<v
         smsSent: user.notifySms && !!user.phoneNumber,
         pushSent: user.notifyPush,
         discordSent: user.notifyDiscord && !!user.discordWebhook,
+        homeAssistantSent: user.notifyHomeAssistant && !!user.homeAssistantWebhook,
         screenshotPath: payload.screenshotPath ?? null,
       },
     });
