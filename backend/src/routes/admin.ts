@@ -1,5 +1,6 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth';
+import { getBackupStatus, runBackupNow, exportBackup, importBackup } from '../controllers/backupController';
 import { getDashboardStats, getUsers, createAdminUser, updateUser, deleteUser, getAdminProducts, createProduct, updateProduct, deleteProduct, scrapeProduct, scrapeAll, fetchImage, addStoreProduct, getAdminStores, createAdminStore, updateAdminStore, deleteAdminStore, testScreenshot, getFailingListings, bulkDeactivateListings } from '../controllers/adminController';
 import { testScraper, testAllScrapers, getScraperHealth } from '../controllers/scraperHealthController';
 import { getScraperLeaderboard } from '../controllers/scraperLeaderboardController';
@@ -11,6 +12,14 @@ const router = Router();
 router.use(authenticate, requireAdmin);
 
 router.get('/stats', getDashboardStats);
+
+// Database backups (admin only; router already requires auth + admin).
+router.get('/backups/status', getBackupStatus);
+router.post('/backups/run', runBackupNow);
+router.get('/backups/export', exportBackup);
+// Import receives the raw dump as the request body (no multer dependency). The
+// typed CONFIRM + filename ride as query params since the body is the file.
+router.post('/backups/import', express.raw({ type: '*/*', limit: '512mb' }), importBackup);
 router.post('/test-screenshot', testScreenshot);
 router.get('/scraper-reports', getScraperReports);
 router.patch('/scraper-reports/:id', validate(updateScraperReportSchema), updateScraperReport);

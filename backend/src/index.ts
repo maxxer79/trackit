@@ -11,6 +11,7 @@ import { pruneOldRecords } from './workers/prune';
 import { startDeliveryPoller } from './workers/deliveryPoller';
 import { startAutoArchive } from './workers/autoArchive';
 import { startDigest } from './workers/digest';
+import { startBackupScheduler } from './workers/backupScheduler';
 import { ensureScreenshotDir, screenshotDir, screenshotEnabled, pruneOldScreenshots } from './services/screenshot';
 import { errorHandler } from './middleware/errorHandler';
 import { BACKEND_VERSION } from './version';
@@ -313,6 +314,9 @@ httpServer.listen(PORT, async () => {
 
   // Daily/weekly digest emails (no-op unless users opt in + SMTP configured).
   startDigest();
+
+  // Scheduled database backups (nightly by default; BACKUP_ENABLED=false opts out).
+  startBackupScheduler();
 
   // Restock proof screenshots — prepare the dir and prune old files daily.
   if (screenshotEnabled()) {

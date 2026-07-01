@@ -28,7 +28,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install OpenSSL for Prisma + Chromium for headless browser scraping
+# Install OpenSSL for Prisma + Chromium for headless browser scraping +
+# postgresql-client (pg_dump/pg_restore/psql) for the DB backup/restore feature.
+# Pinned to the v15 client to match the postgres:15 server.
 RUN apk add --no-cache \
     openssl \
     chromium \
@@ -36,7 +38,8 @@ RUN apk add --no-cache \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    postgresql15-client
 
 # Tell Puppeteer to use the system Chromium instead of downloading its own
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \

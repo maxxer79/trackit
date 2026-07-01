@@ -96,6 +96,7 @@ export default function AdminPage() {
           { to: '/admin/stores', icon: '🏪', title: 'Retailers', desc: 'Manage store logos & links' },
           { to: '/admin/logs', icon: '📋', title: 'Scraper Logs', desc: 'Monitor scraper health' },
           { to: '/admin/reports', icon: '⚠️', title: 'Scraper Reports', desc: 'User-reported tracking problems' },
+          { to: '/admin/backups', icon: '💾', title: 'Backups', desc: 'Database backup & restore' },
           { to: '/browse', icon: '🛍', title: 'Browse', desc: 'View product catalog' },
         ].map(({ to, icon, title, desc }) => (
           <Link
