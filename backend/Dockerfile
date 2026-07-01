@@ -29,8 +29,10 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Install OpenSSL for Prisma + Chromium for headless browser scraping +
-# postgresql-client (pg_dump/pg_restore/psql) for the DB backup/restore feature.
-# Pinned to the v15 client to match the postgres:15 server.
+# postgresql client (pg_dump/pg_restore/psql) for the DB backup/restore feature.
+# The base image's Alpine (3.23) no longer ships postgresql15-client; the v17
+# client (in the always-present `main` repo) dumps/restores our postgres:15
+# server fine — dumping an older server with a newer client is supported.
 RUN apk add --no-cache \
     openssl \
     chromium \
@@ -39,7 +41,7 @@ RUN apk add --no-cache \
     harfbuzz \
     ca-certificates \
     ttf-freefont \
-    postgresql15-client
+    postgresql17-client
 
 # Tell Puppeteer to use the system Chromium instead of downloading its own
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
