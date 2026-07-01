@@ -35,7 +35,7 @@ interface NotifPrefs {
 // it (e.g. for key rotation). Must match the backend's VAPID_PUBLIC_KEY.
 const VAPID_PUBLIC_KEY =
   import.meta.env.VITE_VAPID_PUBLIC_KEY ||
-  'BDcSMPCqyzWtuL__6mEqEZDj3kMktKkqtZDCqCvXPo6Vx38xqzPgXypR4qk1spu0d067c-hTuFh4FcdkSf0EOOM';
+  'BDo7ZgzH3m18g6njNRez10Dx5NpBa4uD4HvbUSthyA3U3iG4jmObTzE3poo90sh-PHnZcPjlBqEUC3aXWzQ3Pfs';
 
 // Quiet-hours times are stored as minutes-from-midnight; the <input type="time">
 // uses "HH:MM".

@@ -3,32 +3,33 @@ version: '3.9'
 # ─────────────────────────────────────────────────────────────────────────────
 # TrackIt — Production Stack
 #
-# Images are built automatically by GitHub Actions and published to:
+# This file matches what actually runs on the NAS (project name: trackit):
+#   • service `db` (Postgres 15), database name `trackit`, user `trackit`
+#   • network `trackit_default`
+#   • frontend published on host port 2000 (Caddy → 192.168.200.68:2000)
+#   • nightly DB backups written to /volume1/docker/trackit/backups
+#
+# Images are built by GitHub Actions and published to:
 #   ghcr.io/maxxer79/trackit-backend:latest
 #   ghcr.io/maxxer79/trackit-frontend:latest
 #
-# Deploy in Portainer:
-#   Stacks → Add Stack → Repository
-#   URL:           https://github.com/maxxer79/trackit
-#   Compose path:  docker-compose.yml
-#   Then add the environment variables listed below.
+# Provide the environment variables from .env (see .env.example).
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
 
   # ─── PostgreSQL ──────────────────────────────────────────────────────────────
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: trackit_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: trackit
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: trackit_db
+      POSTGRES_DB: trackit
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trackit -d trackit_db"]
+      test: ["CMD-SHELL", "pg_isready -U trackit -d trackit"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +37,6 @@ services:
   # ─── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: trackit_redis
     restart: unless-stopped
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
@@ -50,7 +50,6 @@ services:
   # ─── FlareSolverr (Cloudflare challenge solver) ──────────────────────────────
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: trackit_flaresolverr
     restart: unless-stopped
     environment:
       LOG_LEVEL: info
@@ -59,10 +58,9 @@ services:
   # ─── Backend API ─────────────────────────────────────────────────────────────
   backend:
     image: ghcr.io/maxxer79/trackit-backend:latest
-    container_name: trackit_backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://trackit:${POSTGRES_PASSWORD}@postgres:5432/trackit_db
+      DATABASE_URL: postgresql://trackit:${POSTGRES_PASSWORD}@db:5432/trackit
       # Discrete Redis vars — REDIS_URL breaks if the password contains @ : / # ?
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -94,8 +92,16 @@ services:
       # Retention windows (days) for housekeeping; 0 disables that table's pruning.
       SCRAPER_LOG_RETENTION_DAYS: ${SCRAPER_LOG_RETENTION_DAYS:-30}
       STOCK_EVENT_RETENTION_DAYS: ${STOCK_EVENT_RETENTION_DAYS:-365}
+      # Database backups (admin panel + nightly cron). Dumps land in the mounted
+      # volume below; keep the newest BACKUP_RETENTION.
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION: "30"
+      BACKUP_CRON: "0 3 * * *"
+    volumes:
+      # Host path is NAS-specific; must be writable by the container user (uid 1001).
+      - /volume1/docker/trackit/backups:/backups
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -109,7 +115,6 @@ services:
   # ─── Frontend (nginx) ─────────────────────────────────────────────────────────
   frontend:
     image: ghcr.io/maxxer79/trackit-frontend:latest
-    container_name: trackit_frontend
     restart: unless-stopped
     ports:
       - "2000:80"
@@ -123,4 +128,4 @@ volumes:
 
 networks:
   default:
-    name: trackit_network
+    name: trackit_default
