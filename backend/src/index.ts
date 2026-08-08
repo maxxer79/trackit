@@ -25,6 +25,7 @@ import scraperReportRoutes from './routes/scraperReports';
 import storeRoutes from './routes/stores';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
+import zipCheckRoutes from './routes/zipCheck';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -114,6 +115,7 @@ app.use('/api/scraper-reports', scraperReportRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/zip-check', zipCheckRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
 

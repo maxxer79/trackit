@@ -18,6 +18,16 @@ import zipCheckRoutes from './routes/zipCheck';
 import { errorHandler } from './middleware/errorHandler';
 import logger from './utils/logger';
 
+// ⚠️  THIS FILE IS NOT THE PRODUCTION SERVER. ⚠️
+//
+// src/index.ts builds its OWN express app and does not import this one — as of
+// 2026-08-08 nothing in the codebase imports app.ts at all. A route registered
+// here alone will 404 in production (index.ts's 404 handler returns
+// {"error":"Not found"}, vs {"error":"Route not found"} here — that byte
+// difference is the fastest way to tell which app answered you).
+//
+// Register new routes in src/index.ts. Ideally delete this file, or make
+// index.ts import it, so the two can't drift again.
 const app = express();
 
 // Security middleware
