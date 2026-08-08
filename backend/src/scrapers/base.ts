@@ -1,13 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
-import type { StockResult, StockStatus } from '@shared';
+import type { StockResult, StockStatus, LocationContext } from '@shared';
 import { withRetry } from './retry';
 import { scraperRateLimiter } from './rateLimiter';
 import logger from '../utils/logger';
 
 // Re-export the shared scraper contract so existing `import { StockResult }
 // from './base'` sites across the scrapers keep working unchanged.
-export type { StockResult, StockStatus };
+export type { StockResult, StockStatus, LocationContext };
 
 export abstract class BaseScraper {
   protected storeSlug: string;
@@ -51,13 +51,28 @@ export abstract class BaseScraper {
     });
   }
 
-  abstract checkStock(productUrl: string, storeProductId?: string): Promise<StockResult>;
+  /**
+   * `location` is optional and additive: scrapers that ignore it behave exactly
+   * as before (TypeScript allows an implementation to declare fewer params).
+   * Scrapers for per-store retailers MUST honour it — see walmart/target/
+   * homedepot/lowes. When it's absent they fall back to their env-var default
+   * store, which is correct only for "what does this cost nationally".
+   */
+  abstract checkStock(
+    productUrl: string,
+    storeProductId?: string,
+    location?: LocationContext
+  ): Promise<StockResult>;
 
-  protected async fetchPage(url: string): Promise<string> {
+  /**
+   * `headers` are merged over the client defaults — used to carry per-request
+   * location cookies (see walmart.ts) without mutating the shared client.
+   */
+  protected async fetchPage(url: string, headers?: Record<string, string>): Promise<string> {
     // Retry transient failures (network resets, timeouts, 5xx) with jittered
     // backoff before letting the scraper fall through to its browser fallback.
     // Bot-blocks (403) and 429 are NOT retried — see retry.ts.
-    const response = await withRetry(() => this.client.get(url), {
+    const response = await withRetry(() => this.client.get(url, headers ? { headers } : undefined), {
       onRetry: ({ attempt, delayMs, error }) =>
         logger.debug('scraper fetch retry', {
           storeSlug: this.storeSlug,

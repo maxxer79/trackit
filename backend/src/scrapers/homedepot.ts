@@ -11,7 +11,7 @@
  * Item id (OMSID) comes from the product URL: /p/{name}/{itemId}
  */
 import axios from 'axios';
-import { BaseScraper, StockResult } from './base';
+import { BaseScraper, StockResult, LocationContext } from './base';
 import { getSolverrSession, SolverrSession } from './browserFetch';
 import logger from '../utils/logger';
 
@@ -52,7 +52,11 @@ export class HomeDepotScraper extends BaseScraper {
     super('homedepot');
   }
 
-  async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
+  async checkStock(
+    productUrl: string,
+    storeProductId?: string,
+    location?: LocationContext
+  ): Promise<StockResult> {
     const itemId =
       (storeProductId && /^\d{6,12}$/.test(storeProductId) ? storeProductId : undefined) ||
       productUrl.match(/\/p\/(?:[^/]+\/)*(\d{6,12})(?:[/?#]|$)/)?.[1];
@@ -62,14 +66,14 @@ export class HomeDepotScraper extends BaseScraper {
     }
 
     // Attempt 1: cookie-less POST (worked 2026-06-11)
-    let result = await this.queryFulfillment(itemId, productUrl);
+    let result = await this.queryFulfillment(itemId, productUrl, undefined, location);
     if (result) return result;
 
     // Attempt 2: replay an Akamai-validated session from FlareSolverr
     const session = await getSolverrSession('https://www.homedepot.com/');
     if (session) {
       logger.info(`[HomeDepot ${itemId}] retrying GraphQL with FlareSolverr session cookies`);
-      result = await this.queryFulfillment(itemId, productUrl, session);
+      result = await this.queryFulfillment(itemId, productUrl, session, location);
       if (result) return result;
     }
 
@@ -79,7 +83,8 @@ export class HomeDepotScraper extends BaseScraper {
   private async queryFulfillment(
     itemId: string,
     productUrl: string,
-    session?: SolverrSession
+    session?: SolverrSession,
+    location?: LocationContext
   ): Promise<StockResult | null> {
     try {
       const headers: Record<string, string> = {
@@ -109,7 +114,13 @@ export class HomeDepotScraper extends BaseScraper {
         `${GQL}?opname=productFulfillment`,
         {
           operationName: 'productFulfillment',
-          variables: { itemId, storeId: DEFAULT_STORE, zipCode: DEFAULT_ZIP },
+          variables: {
+            itemId,
+            // Per-ZIP checks pass an explicitly resolved store; scheduled checks
+            // pass nothing and keep the historical default store.
+            storeId: location?.storeId ?? DEFAULT_STORE,
+            zipCode: location?.zip ?? DEFAULT_ZIP,
+          },
           query: FULFILLMENT_QUERY,
         },
         { timeout: 15000, headers }

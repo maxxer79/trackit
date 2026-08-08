@@ -57,6 +57,21 @@ export const importTrackingSchema = z.object({
   url: z.string().url('Enter a valid product URL'),
 });
 
+// ── ZIP price check ─────────────────────────────────────────────────────────
+
+// POST /api/zip-check — on-demand per-store price/availability across ZIPs.
+// The 5-ZIP cap is enforced again in zipCheck.normalizeZips (which also dedupes
+// and drops invalid entries); this is the friendly, early error.
+export const zipCheckSchema = z.object({
+  productUrl: z.string().url('Enter a valid product URL'),
+  zips: z
+    .array(z.string().trim().regex(/^\d{5}(-\d{4})?$/, 'Enter 5-digit US ZIP codes'))
+    .min(1, 'Enter at least one ZIP code')
+    .max(5, 'Up to 5 ZIP codes per check'),
+  storeProductId: z.string().trim().min(1).optional(),
+  force: z.boolean().optional(),
+});
+
 // PATCH /api/tracking/:productId — per-item notification preferences.
 export const updateTrackingSchema = z
   .object({

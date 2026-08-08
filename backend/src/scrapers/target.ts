@@ -1,4 +1,4 @@
-import { BaseScraper, StockResult } from './base';
+import { BaseScraper, StockResult, LocationContext } from './base';
 import { fetchRenderedHtml, extractJsonFromRendered, fetchRawJson, fetchJsonWithSolverrCookies } from './browserFetch';
 import logger from '../utils/logger';
 
@@ -7,7 +7,11 @@ export class TargetScraper extends BaseScraper {
     super('target');
   }
 
-  async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
+  async checkStock(
+    productUrl: string,
+    storeProductId?: string,
+    location?: LocationContext
+  ): Promise<StockResult> {
     try {
       // storeProductId is the DB record id (cuid), NOT a TCIN — only use
       // it if it's actually numeric
@@ -16,7 +20,7 @@ export class TargetScraper extends BaseScraper {
         productUrl.match(/A-(\d+)/)?.[1];
 
       if (tcin) {
-        const apiUrl = this.redskyUrl(tcin);
+        const apiUrl = this.redskyUrl(tcin, location);
 
         // Attempt 1: direct API call (fast when Target accepts it)
         try {
@@ -36,7 +40,7 @@ export class TargetScraper extends BaseScraper {
         // Attempt 2: same API fetched THROUGH the browser (FlareSolverr /
         // Chromium) — Target's page never embeds availability; the data
         // exists ONLY behind this API, which 403s non-browser clients.
-        const result = await this.checkRedskyViaBrowser(tcin, productUrl);
+        const result = await this.checkRedskyViaBrowser(tcin, productUrl, location);
         if (result) return result;
       }
 
@@ -92,17 +96,43 @@ export class TargetScraper extends BaseScraper {
     }
   }
 
-  private redskyUrl(tcin: string): string {
+  /**
+   * Target's default fulfillment store (Minneapolis) — used whenever no
+   * resolved location is supplied, preserving the historical behaviour of
+   * scheduled checks exactly.
+   */
+  private static readonly DEFAULT_LOCATION = {
+    storeId: '3991',
+    zip: '55403',
+    state: 'MN',
+    latitude: 44.97,
+    longitude: -93.28,
+  };
+
+  /** Merge a resolved location over the default, all-or-nothing per field. */
+  private loc(location?: LocationContext) {
+    const d = TargetScraper.DEFAULT_LOCATION;
+    return {
+      storeId: location?.storeId ?? d.storeId,
+      zip: location?.zip ?? d.zip,
+      state: location?.state ?? d.state,
+      latitude: location?.latitude ?? d.latitude,
+      longitude: location?.longitude ?? d.longitude,
+    };
+  }
+
+  private redskyUrl(tcin: string, location?: LocationContext): string {
     // Fulfillment/shipping availability is only included when the request
     // carries store + location context (zip/state/lat/long), like Target's
-    // own frontend sends.
+    // own frontend sends. pricing_store_id is what makes the PRICE per-store.
+    const l = this.loc(location);
     return (
       `https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1` +
       `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
       `&tcin=${tcin}` +
-      `&store_id=3991&pricing_store_id=3991&has_pricing_store_id=true` +
-      `&scheduled_delivery_store_id=3991` +
-      `&zip=55403&state=MN&latitude=44.970&longitude=-93.280` +
+      `&store_id=${l.storeId}&pricing_store_id=${l.storeId}&has_pricing_store_id=true` +
+      `&scheduled_delivery_store_id=${l.storeId}` +
+      `&zip=${l.zip}&state=${l.state}&latitude=${l.latitude}&longitude=${l.longitude}` +
       `&has_financing_options=true&visitor_id=0100000000000000&channel=WEB` +
       `&page=%2Fp%2FA-${tcin}&is_bot=false`
     );
@@ -178,9 +208,10 @@ export class TargetScraper extends BaseScraper {
     }
 
     // In-store pickup signal. store_options only appears in the fulfillment_v1
-    // response and reflects Target's DEFAULT fulfillment store (store_id 3991,
-    // Minneapolis — see fulfillmentUrl), NOT the user's ZIP. We surface the
-    // store's location_name so any pickup alert makes clear WHICH store it is.
+    // response and reflects whichever store_id the request carried — the
+    // resolved store when a LocationContext was supplied, otherwise the default
+    // (3991, Minneapolis). We surface the store's location_name either way so a
+    // pickup alert always makes clear WHICH store it is.
     // When store_options is absent (e.g. client_v1) leave pickup undefined
     // (unknown) rather than asserting it's unavailable.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -211,17 +242,18 @@ export class TargetScraper extends BaseScraper {
     };
   }
 
-  private fulfillmentUrl(tcin: string): string {
+  private fulfillmentUrl(tcin: string, location?: LocationContext): string {
     // Target split availability out of pdp_client_v1 into a dedicated
     // fulfillment aggregation (confirmed: client_v1 responses carry no
     // fulfillment key at all anymore).
+    const l = this.loc(location);
     return (
       `https://redsky.target.com/redsky_aggregations/v1/web/pdp_fulfillment_v1` +
       `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
       `&tcin=${tcin}` +
-      `&store_id=3991&store_positions_store_id=3991&has_store_positions_store_id=false` +
-      `&zip=55403&state=MN&latitude=44.970&longitude=-93.280` +
-      `&scheduled_delivery_store_id=3991&required_store_id=3991&has_required_store_id=false&is_bot=false`
+      `&store_id=${l.storeId}&store_positions_store_id=${l.storeId}&has_store_positions_store_id=false` +
+      `&zip=${l.zip}&state=${l.state}&latitude=${l.latitude}&longitude=${l.longitude}` +
+      `&scheduled_delivery_store_id=${l.storeId}&required_store_id=${l.storeId}&has_required_store_id=false&is_bot=false`
     );
   }
 
@@ -264,8 +296,12 @@ export class TargetScraper extends BaseScraper {
    * come from a real browser context: pdp_client_v1 first (price + some
    * shapes), then pdp_fulfillment_v1 (where availability actually lives).
    */
-  private async checkRedskyViaBrowser(tcin: string, productUrl: string): Promise<StockResult | null> {
-    const client = await this.fetchJsonViaBrowser(this.redskyUrl(tcin), 'client_v1');
+  private async checkRedskyViaBrowser(
+    tcin: string,
+    productUrl: string,
+    location?: LocationContext
+  ): Promise<StockResult | null> {
+    const client = await this.fetchJsonViaBrowser(this.redskyUrl(tcin, location), 'client_v1');
     if (client) {
       logger.info(`[Target] Browser-based Redsky fetch SUCCEEDED for TCIN ${tcin}`);
       const mapped = this.mapRedsky(tcin, client.data, productUrl);
@@ -278,7 +314,7 @@ export class TargetScraper extends BaseScraper {
     }
 
     // client_v1 had no fulfillment — query the dedicated fulfillment API
-    const ff = await this.fetchJsonViaBrowser(this.fulfillmentUrl(tcin), 'fulfillment_v1');
+    const ff = await this.fetchJsonViaBrowser(this.fulfillmentUrl(tcin, location), 'fulfillment_v1');
     if (ff) {
       logger.info(`[Target] Browser-based fulfillment_v1 fetch SUCCEEDED for TCIN ${tcin}`);
       const mapped = this.mapRedsky(tcin, ff.data, productUrl);

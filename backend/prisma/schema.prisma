@@ -318,6 +318,58 @@ model StockEvent {
   @@map("stock_events")
 }
 
+// ZIP → retailer store-id resolution cache (services/storeLocator.ts).
+// Store assignments almost never change, so these are refreshed monthly and a
+// stale row is preferred over a failed lookup.
+model StoreLocation {
+  id        String   @id @default(cuid())
+  storeSlug String // walmart | target | homedepot | lowes
+  zip       String
+  storeId   String // the RETAILER's own store id, e.g. HD "277", Lowe's "0592"
+  storeName String?
+  state     String?
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeSlug, zip])
+  @@map("store_locations")
+}
+
+// Cached results of on-demand multi-ZIP price checks.
+//
+// Deliberately NOT StockEvent: these are per-store prices for arbitrary ZIPs,
+// and letting them into the normal price series would skew priceAnalytics'
+// time-weighted average, the good-deal badge and target-price suggestions.
+// Nothing in this table feeds those calculations.
+model ZipPriceCheck {
+  id        String @id @default(cuid())
+  storeSlug String
+  zip       String
+  // sha256 of productUrl — a URL is too long to key a btree index safely.
+  urlKey    String
+  productUrl String
+  // The store we actually resolved and priced against. Null when resolution
+  // failed, in which case locationResolved is false and the row is NOT a
+  // trustworthy answer for this ZIP.
+  resolvedStoreId String?
+  storeName       String?
+  locationResolved Boolean @default(false)
+
+  status          String // IN_STOCK | OUT_OF_STOCK | PREORDER | LIMITED | UNKNOWN
+  price           Float?
+  pickupAvailable Boolean?
+  pickupLocation  String?
+  message         String?
+
+  checkedAt DateTime @default(now())
+
+  @@unique([storeSlug, zip, urlKey])
+  @@index([checkedAt])
+  @@map("zip_price_checks")
+}
+
 // Audit trail for AutoBuy. AutoBuy execution is still a stub, but every time the
 // conditions are evaluated for an enabled user we record it here — so the moment
 // AutoBuy ever moves money, there's already a money-adjacent paper trail.

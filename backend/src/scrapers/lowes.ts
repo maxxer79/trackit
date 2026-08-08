@@ -12,7 +12,7 @@
  * Product id comes from the page URL: /pd/{name}/{productId}
  */
 import axios from 'axios';
-import { BaseScraper, StockResult } from './base';
+import { BaseScraper, StockResult, LocationContext } from './base';
 import { fetchRenderedHtml, extractJsonFromRendered } from './browserFetch';
 import logger from '../utils/logger';
 
@@ -27,14 +27,24 @@ export class LowesScraper extends BaseScraper {
     super('lowes');
   }
 
-  private wpdUrl(productId: string): string {
+  private wpdUrl(productId: string, location?: LocationContext): string {
+    // The store id is part of the PATH here, so a ZIP without a matching store
+    // id would return the default store's price under someone else's ZIP.
+    // storeLocator resolves both together; we never mix one with the other.
+    const store = location?.storeId ?? STORE;
+    const zip = location?.zip ?? ZIP;
+    const state = location?.state ?? ZIP_STATE;
     return (
-      `https://www.lowes.com/wpd/${productId}/productdetail/${STORE}/Guest/${ZIP}` +
-      `?nearByStore=${STORE}&zipState=${ZIP_STATE}`
+      `https://www.lowes.com/wpd/${productId}/productdetail/${store}/Guest/${zip}` +
+      `?nearByStore=${store}&zipState=${state}`
     );
   }
 
-  async checkStock(productUrl: string, storeProductId?: string): Promise<StockResult> {
+  async checkStock(
+    productUrl: string,
+    storeProductId?: string,
+    location?: LocationContext
+  ): Promise<StockResult> {
     const productId =
       (storeProductId && /^\d{8,12}$/.test(storeProductId) ? storeProductId : undefined) ||
       productUrl.match(/\/pd\/(?:[^/]+\/)*(\d{8,12})(?:[/?#]|$)/)?.[1];
@@ -43,7 +53,7 @@ export class LowesScraper extends BaseScraper {
       return { storeSlug: this.storeSlug, status: 'UNKNOWN', productUrl, message: 'No Lowe\'s product id in URL (expected /pd/{name}/{id})' };
     }
 
-    const apiUrl = this.wpdUrl(productId);
+    const apiUrl = this.wpdUrl(productId, location);
 
     // Attempt 1: direct GET
     try {
@@ -63,7 +73,7 @@ export class LowesScraper extends BaseScraper {
           'Sec-Fetch-Site': 'same-origin',
         },
       });
-      const result = this.mapWpd(productId, data, productUrl);
+      const result = this.mapWpd(productId, data, productUrl, location);
       if (result) return result;
     } catch (err: any) {
       logger.warn(`[Lowes ${productId}] direct wpd failed: ${err?.response?.status ?? err.message}`);
@@ -75,7 +85,7 @@ export class LowesScraper extends BaseScraper {
       const data = extractJsonFromRendered(body);
       if (data) {
         logger.info(`[Lowes ${productId}] browser-based wpd fetch SUCCEEDED`);
-        const result = this.mapWpd(productId, data, productUrl);
+        const result = this.mapWpd(productId, data, productUrl, location);
         if (result) return result;
       } else {
         logger.warn(`[Lowes ${productId}] browser-based wpd response had no parseable JSON (${body.length} bytes)`);
@@ -91,7 +101,12 @@ export class LowesScraper extends BaseScraper {
    * the strongest signal to a status.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private mapWpd(productId: string, data: any, productUrl: string): StockResult | null {
+  private mapWpd(
+    productId: string,
+    data: any,
+    productUrl: string,
+    location?: LocationContext
+  ): StockResult | null {
     const signals: Signal[] = [];
     const prices: number[] = [];
     // Pickup-specific signals: the wpd endpoint is already store-scoped (storeId
@@ -185,7 +200,10 @@ export class LowesScraper extends BaseScraper {
       if (pPos) pickupAvailable = true;
       else if (pNeg) pickupAvailable = false;
     }
-    const pickupLocation = pickupAvailable === true ? (storeName ?? `Lowe's #${STORE}`) : undefined;
+    const pickupLocation =
+      pickupAvailable === true
+        ? (storeName ?? location?.storeName ?? `Lowe's #${location?.storeId ?? STORE}`)
+        : undefined;
 
     if (positive) {
       return { storeSlug: this.storeSlug, status: 'IN_STOCK', price, productUrl, pickupAvailable, pickupLocation };

@@ -205,6 +205,51 @@ async function ensureSchema(): Promise<void> {
       )
     `);
 
+    // ZIP price-check tables (created here to match the StoreLocation and
+    // ZipPriceCheck models in schema.prisma — no prisma migrate on boot).
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "store_locations" (
+        "id" TEXT PRIMARY KEY,
+        "storeSlug" TEXT NOT NULL,
+        "zip" TEXT NOT NULL,
+        "storeId" TEXT NOT NULL,
+        "storeName" TEXT,
+        "state" TEXT,
+        "latitude" DOUBLE PRECISION,
+        "longitude" DOUBLE PRECISION,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "store_locations_storeSlug_zip_key" ON "store_locations" ("storeSlug", "zip")'
+    );
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "zip_price_checks" (
+        "id" TEXT PRIMARY KEY,
+        "storeSlug" TEXT NOT NULL,
+        "zip" TEXT NOT NULL,
+        "urlKey" TEXT NOT NULL,
+        "productUrl" TEXT NOT NULL,
+        "resolvedStoreId" TEXT,
+        "storeName" TEXT,
+        "locationResolved" BOOLEAN NOT NULL DEFAULT false,
+        "status" TEXT NOT NULL,
+        "price" DOUBLE PRECISION,
+        "pickupAvailable" BOOLEAN,
+        "pickupLocation" TEXT,
+        "message" TEXT,
+        "checkedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await prisma.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "zip_price_checks_storeSlug_zip_urlKey_key" ON "zip_price_checks" ("storeSlug", "zip", "urlKey")'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "zip_price_checks_checkedAt_idx" ON "zip_price_checks" ("checkedAt")'
+    );
+
     // Purchases / delivery tracking table (created here to match the Purchase
     // model in schema.prisma — no prisma migrate on boot).
     await prisma.$executeRawUnsafe(`

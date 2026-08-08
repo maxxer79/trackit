@@ -103,6 +103,22 @@ const domainMap: Record<string, string> = {
   'walmart.com': 'walmart',
 };
 
+/**
+ * Retailer slug for a product URL, or null when the domain isn't one we know.
+ * Shares domainMap with getScraperForStore so the two can't drift.
+ */
+export function storeSlugFromUrl(productUrl: string): string | null {
+  try {
+    const host = new URL(productUrl).hostname.replace(/^www\./, '').toLowerCase();
+    for (const [domain, slug] of Object.entries(domainMap)) {
+      if (host === domain || host.endsWith(`.${domain}`)) return slug;
+    }
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}
+
 export function getScraperForStore(storeSlug: string, productUrl?: string): BaseScraper {
   // 1. Exact slug
   const direct = scraperRegistry.get(storeSlug);

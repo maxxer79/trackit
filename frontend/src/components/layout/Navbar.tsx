@@ -69,6 +69,9 @@ export default function Navbar() {
               <NavLink to="/price-watch" className={({ isActive }) => clsx('nav-link', isActive && 'active')}>
                 Price Watch
               </NavLink>
+              <NavLink to="/zip-check" className={({ isActive }) => clsx('nav-link', isActive && 'active')}>
+                ZIP Check
+              </NavLink>
               <NavLink to="/alerts" className={({ isActive }) => clsx('nav-link', isActive && 'active')}>
                 Alerts
               </NavLink>

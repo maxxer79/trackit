@@ -16,6 +16,8 @@ import RestockFrequencyBadge from '../components/products/RestockFrequencyBadge'
 import StockTimelinePanel from '../components/products/StockTimelinePanel';
 import SimilarItems from '../components/products/SimilarItems';
 import ReportIssue from '../components/products/ReportIssue';
+import ZipPriceCheck from '../components/products/ZipPriceCheck';
+import { supportsZipCheck } from '../hooks/useZipCheck';
 import { conditionLabel, CONDITION_BADGE, CONDITION_LABEL } from '../lib/condition';
 
 const PRICE_OPTIONS = [
@@ -271,6 +273,12 @@ export default function ProductPage() {
     ? pricedInStock.reduce((min: any, s: any) => (s.price < min.price ? s : min), pricedInStock[0]).storeProductId
     : null;
 
+  // Per-ZIP checks only make sense at retailers that price per store. Prefer a
+  // listing that actually has a direct product URL to scrape.
+  const zipCheckListing = mergedStatuses.find(
+    (s: any) => s.productUrl && supportsZipCheck(s.storeSlug)
+  );
+
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
       {/* Breadcrumb */}
@@ -520,6 +528,17 @@ export default function ProductPage() {
           })
         }
       </div>
+
+      {/* Per-ZIP price check — only for retailers with real per-store pricing */}
+      {zipCheckListing && (
+        <div className="mb-4">
+          <ZipPriceCheck
+            productUrl={zipCheckListing.productUrl}
+            storeProductId={zipCheckListing.storeProductId}
+            compact
+          />
+        </div>
+      )}
 
       {/* Admin: add store link hint */}
       {user?.role === 'ADMIN' && (

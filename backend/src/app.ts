@@ -14,6 +14,7 @@ import { screenshotDir } from './services/screenshot';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import userRoutes from './routes/users';
+import zipCheckRoutes from './routes/zipCheck';
 import { errorHandler } from './middleware/errorHandler';
 import logger from './utils/logger';
 
@@ -69,6 +70,7 @@ app.use('/api/scraper-reports', scraperReportRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/zip-check', zipCheckRoutes);
 
 // 404 handler
 app.use('*', (_req, res) => {
