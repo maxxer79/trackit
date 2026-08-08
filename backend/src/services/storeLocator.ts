@@ -31,6 +31,13 @@ import axios from 'axios';
 import { prisma } from '../config/database';
 import logger from '../utils/logger';
 import { isValidUsZip, normalizeZip } from './pickup';
+import {
+  fetchJsonWithSolverrCookies,
+  fetchRawJson,
+  fetchRenderedHtml,
+  extractJsonFromRendered,
+  getSolverrSession,
+} from '../scrapers/browserFetch';
 
 export interface ResolvedStore {
   storeId: string;
@@ -64,6 +71,69 @@ function logShapeOnce(slug: string, payload: unknown): void {
   );
 }
 
+/**
+ * GET a JSON endpoint, falling back to a real browser when the retailer blocks
+ * a plain request.
+ *
+ * Lowe's, Home Depot and Walmart all sit behind Akamai, which answers bare HTTP
+ * clients with 403 (observed 2026-08-08: every locator lookup 403'd in under
+ * 50ms). The product scrapers already handle this; the locator originally did
+ * not, which is why every ZIP came back unresolved. Same escalation ladder as
+ * scrapers/target.ts:
+ *   1. direct GET (fast when the retailer allows it)
+ *   2. FlareSolverr solves the URL, replay its cookies in a plain GET
+ *   3. raw network response via puppeteer
+ *   4. FlareSolverr rendered body + JSON extraction
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchJsonResilient(url: string, slug: string, headers: Record<string, string>): Promise<any> {
+  try {
+    const { data } = await axios.get(url, { timeout: TIMEOUT, headers });
+    return data;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    logger.info(`[storeLocator:${slug}] direct GET ${status ?? 'failed'} - escalating to browser fetch`);
+  }
+
+  const replayed = await fetchJsonWithSolverrCookies(url);
+  if (replayed) return replayed;
+
+  const raw = await fetchRawJson(url);
+  if (raw) return raw;
+
+  const body = await fetchRenderedHtml(url);
+  if (body) {
+    const parsed = extractJsonFromRendered(body);
+    if (parsed) return parsed;
+    logger.warn(`[storeLocator:${slug}] rendered body had no parseable JSON (${body.length} bytes)`);
+  }
+
+  return null;
+}
+
+/**
+ * Last-resort store id for Lowe's: fetch the human store-finder page through a
+ * browser and pull store numbers straight out of the links.
+ *
+ * Confirmed URL shape (2026-08-08, from the live site):
+ *   https://www.lowes.com/store/VA-Roanoke/0419
+ * so any /store/{ST}-{City}/{4-digit} link on the results page is a real store,
+ * listed nearest-first. This survives the JSON API changing shape or path.
+ */
+async function lowesStoreIdFromHtml(zip: string): Promise<{ storeId: string; state?: string } | null> {
+  const url = `https://www.lowes.com/store/search?zipcode=${encodeURIComponent(zip)}`;
+  const html = await fetchRenderedHtml(url);
+  if (!html) return null;
+
+  const match = html.match(/\/store\/([A-Z]{2})-[^/"']+\/(\d{4})/);
+  if (!match) {
+    logger.warn(`[storeLocator:lowes] no /store/{ST}-{City}/{id} links found for ${zip} (${html.length} bytes)`);
+    return null;
+  }
+  logger.info(`[storeLocator:lowes] ${zip} resolved from store-finder HTML: #${match[2]} (${match[1]})`);
+  return { storeId: match[2], state: match[1] };
+}
+
 // ── Target ───────────────────────────────────────────────────────────────────
 // Redsky's nearby_stores aggregation, same host and API key the product
 // endpoints in scrapers/target.ts already use.
@@ -76,9 +146,10 @@ const targetLocator: StoreLocatorAdapter = {
       `?key=9f36aeafbe60771e321a7cc95a78140772ab3e96` +
       `&limit=1&within=100&place=${encodeURIComponent(zip)}`;
     try {
-      const { data } = await axios.get(url, {
-        timeout: TIMEOUT,
-        headers: { Accept: 'application/json', 'User-Agent': UA, Referer: 'https://www.target.com/' },
+      const data = await fetchJsonResilient(url, 'target', {
+        Accept: 'application/json',
+        'User-Agent': UA,
+        Referer: 'https://www.target.com/',
       });
       logShapeOnce('target', data);
 
@@ -121,23 +192,49 @@ const homeDepotLocator: StoreLocatorAdapter = {
   slug: 'homedepot',
   confidence: 'unverified',
   async resolve(zip) {
-    try {
+    // Same two-step as scrapers/homedepot.ts: cookie-less POST first, then
+    // retry with an Akamai-validated session from FlareSolverr on failure.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const post = async (cookie?: string, userAgent?: string): Promise<any> => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: '*/*',
+        Origin: 'https://www.homedepot.com',
+        Referer: 'https://www.homedepot.com/',
+        'User-Agent': userAgent || UA,
+        'x-experience-name': 'general-merchandise',
+        'x-hd-dc': 'origin',
+      };
+      if (cookie) headers.Cookie = cookie;
       const { data } = await axios.post(
         `${HD_GQL}?opname=storeSearch`,
         { operationName: 'storeSearch', variables: { address: zip, radius: 50 }, query: HD_STORE_QUERY },
-        {
-          timeout: TIMEOUT,
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: '*/*',
-            Origin: 'https://www.homedepot.com',
-            Referer: 'https://www.homedepot.com/',
-            'User-Agent': UA,
-            'x-experience-name': 'general-merchandise',
-            'x-hd-dc': 'origin',
-          },
-        }
+        { timeout: TIMEOUT, headers }
       );
+      return data;
+    };
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any = null;
+      try {
+        data = await post();
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        logger.info(`[storeLocator:homedepot] cookie-less POST ${status ?? 'failed'} - retrying with FlareSolverr session`);
+      }
+
+      if (!data?.data?.storeSearch?.stores?.length) {
+        const session = await getSolverrSession('https://www.homedepot.com/');
+        if (session) {
+          try {
+            data = await post(session.cookieHeader, session.userAgent);
+          } catch (err: unknown) {
+            logger.warn(`[storeLocator:homedepot] session POST failed: ${(err as Error)?.message}`);
+          }
+        }
+      }
+
       logShapeOnce('homedepot', data);
 
       if (Array.isArray(data?.errors) && data.errors.length > 0) {
@@ -169,19 +266,23 @@ const lowesLocator: StoreLocatorAdapter = {
   async resolve(zip) {
     const url = `https://www.lowes.com/store/api/searchStores?searchTerm=${encodeURIComponent(zip)}&maxResults=1`;
     try {
-      const { data } = await axios.get(url, {
-        timeout: TIMEOUT,
-        headers: {
-          Accept: 'application/json, text/plain, */*',
-          'User-Agent': UA,
-          Referer: 'https://www.lowes.com/store/',
-        },
+      const data = await fetchJsonResilient(url, 'lowes', {
+        Accept: 'application/json, text/plain, */*',
+        'User-Agent': UA,
+        Referer: 'https://www.lowes.com/store/',
       });
       logShapeOnce('lowes', data);
 
       const store = Array.isArray(data?.stores) ? data.stores[0] : (data?.[0] ?? null);
       const storeId = store?.storeNumber ?? store?.id ?? store?.storeId;
-      if (!storeId) return null;
+
+      // JSON path gave nothing usable - fall back to scraping the store-finder
+      // page, whose /store/{ST}-{City}/{id} links are a confirmed shape.
+      if (!storeId) {
+        const fromHtml = await lowesStoreIdFromHtml(zip);
+        if (!fromHtml) return null;
+        return { storeId: fromHtml.storeId, zip, state: fromHtml.state };
+      }
 
       // Lowe's store numbers are zero-padded to 4 chars in the wpd path.
       return {
@@ -193,8 +294,10 @@ const lowesLocator: StoreLocatorAdapter = {
         longitude: store?.longitude ?? undefined,
       };
     } catch (err: unknown) {
-      logger.warn(`[storeLocator:lowes] ${zip} failed: ${(err as Error)?.message}`);
-      return null;
+      logger.warn(`[storeLocator:lowes] ${zip} JSON path failed (${(err as Error)?.message}) - trying store-finder HTML`);
+      const fromHtml = await lowesStoreIdFromHtml(zip);
+      if (!fromHtml) return null;
+      return { storeId: fromHtml.storeId, zip, state: fromHtml.state };
     }
   },
 };
@@ -206,13 +309,10 @@ const walmartLocator: StoreLocatorAdapter = {
   async resolve(zip) {
     const url = `https://www.walmart.com/store/api/finder?singleLineAddr=${encodeURIComponent(zip)}&distance=50`;
     try {
-      const { data } = await axios.get(url, {
-        timeout: TIMEOUT,
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': UA,
-          Referer: 'https://www.walmart.com/store/finder',
-        },
+      const data = await fetchJsonResilient(url, 'walmart', {
+        Accept: 'application/json',
+        'User-Agent': UA,
+        Referer: 'https://www.walmart.com/store/finder',
       });
       logShapeOnce('walmart', data);
 
